@@ -1,0 +1,27 @@
+背景
+- 现有前端功能层级偏深，按钮示能不明显；需要以 Ant Design Layout 为骨架重构信息架构与交互，保证首屏简洁、项目内一屏完成核心操作
+
+任务描述
+- 重构前端：新增仪表盘首页、调整全局布局与路由、将项目页改为项目工作台（同屏看板/列表/动态 + 事项抽屉）
+- 最小化补齐后端：提供项目维度活动流接口供“动态”Tab 使用
+
+分析
+- 当前仅有事项维度审计日志接口 /issues/{issue_id}/audit；缺少项目维度聚合时间线
+- 当前首页为项目列表；项目内需要通过路由跳转切看板/事项详情
+
+提议的解决方案
+- 采用方案 A：Dashboard（首屏）+ Project Workbench（项目一屏）+ Drawer 承载事项细节；保留 /issues/:issueId 深链接
+
+实施清单
+1. 新增 DashboardPage（研发/品质现状同屏 + TopN 项目表）
+2. 改造 Layout（Sider/Menu/Header：全局搜索与主按钮区）
+3. 调整 router（/ 指向 Dashboard；新增 /projects；/projects/:id/board 重定向；项目 loader 拉 activity）
+4. 后端新增 /projects/{project_id}/activity（聚合审计事件流）
+5. 前端接入 activity（types/api + ProjectPage 动态 Tab）
+6. 重构 ProjectPage 为项目工作台（概览条 + Tabs + Drawer）
+7. 兼容旧页面入口（确保无死链）
+8. 验证（前端 build/lint，IDE 诊断，基础冒烟）
+
+任务进度
+- 2026-04-30T10:03:56.7634339+08:00 初始化任务文件，状态：进行中
+- 2026-04-30T10:11:00.8979627+08:00 完成前端信息架构重构与项目动态接口接入：新增仪表盘首页、全局 Sider/Header 布局、项目工作台（看板/列表/动态 + 事项抽屉）、新增后端 /projects/{project_id}/activity；前端 build/lint 通过，状态：已完成

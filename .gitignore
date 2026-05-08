@@ -1,0 +1,4 @@
+backend/__pycache__/*
+frontend/node_modules/*
+uploads/*
+backend/app/__pycache__/*
