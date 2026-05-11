@@ -1,58 +1,63 @@
-import { useMemo, useState } from 'react'
-import { Alert, Button, Card, Form, Input, InputNumber, Select, Space, Table, Tag, Typography, Upload, message } from 'antd'
-import type { RcFile, UploadFile } from 'antd/es/upload/interface'
+import { useState } from 'react'
+import {
+  Alert,
+  Button,
+  Card,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd'
 import { Link, useLoaderData, useRevalidator } from 'react-router-dom'
-import { createProject, uploadProjectOverviewImage } from '../api'
-import type { Project } from '../types'
+import { createProject, listTemplates } from '../api'
+import type { Project, PhaseTemplate } from '../types'
+import { useEffect } from 'react'
 
-const PROJECT_TYPES = ['研发项目', '品质项目', '品质问题跟踪'] as const
-
-function yyyymmdd(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}${m}${day}`
-}
+const EQUIP_CATEGORIES = ['关节', '桁架', '视觉桁架', '联线', '其他']
 
 export function ProjectsPage() {
   const { projects } = useLoaderData() as { projects: Project[] }
   const revalidator = useRevalidator()
-
-  const [form] = Form.useForm<{ name: string; type: (typeof PROJECT_TYPES)[number]; priority: number; overview?: string }>()
+  const [form] = Form.useForm()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<PhaseTemplate[]>([])
 
-  const generatedCode = useMemo(() => {
-    const day = yyyymmdd(new Date())
-    const prefix = `PRJ-${day}-`
-    const count = projects.filter((p) => (p.code ?? '').startsWith(prefix)).length
-    return `${prefix}${String(count + 1).padStart(3, '0')}`
-  }, [projects])
+  useEffect(() => {
+    listTemplates().then(setTemplates).catch(() => {})
+  }, [])
 
-  const [images, setImages] = useState<RcFile[]>([])
-  const uploadFileList: UploadFile[] = images.map((f) => ({
-    uid: f.uid,
-    name: f.name,
-    size: f.size,
-    type: f.type,
-    originFileObj: f,
-  }))
-
-  async function onCreate(values: { name: string; type: (typeof PROJECT_TYPES)[number]; priority: number; overview?: string }) {
+  async function onCreate(values: {
+    customer_code: string
+    order_no: string
+    template_id: string
+    equipment_category: string
+    equipment_spec: string
+    equipment_quantity: number
+    contract_payment_progress: number
+    contract_start_date: string
+    contract_duration_days: number
+  }) {
     setLoading(true)
     setError(null)
+    const order_no = `${values.customer_code}-${values.order_no}`
     try {
-      const created = await createProject({
-        name: values.name.trim(),
-        type: values.type,
-        priority: values.priority,
-        overview: values.overview?.trim() || undefined,
+      await createProject({
+        order_no,
+        template_id: values.template_id,
+        equipment_category: values.equipment_category,
+        equipment_spec: values.equipment_spec,
+        equipment_quantity: values.equipment_quantity,
+        contract_payment_progress: values.contract_payment_progress,
+        contract_start_date: values.contract_start_date || null,
+        contract_duration_days: values.contract_duration_days || null,
       })
-      for (const f of images) {
-        await uploadProjectOverviewImage(created.id, f)
-      }
       form.resetFields()
-      setImages([])
       message.success('项目已创建')
       revalidator.revalidate()
     } catch (e) {
@@ -61,56 +66,96 @@ export function ProjectsPage() {
     setLoading(false)
   }
 
+  function fmtDate(d: string | null) {
+    if (!d) return '-'
+    return d.slice(5)
+  }
+
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Typography.Title level={3} style={{ margin: 0 }}>
         项目列表
       </Typography.Title>
       {error ? <Alert type="error" showIcon message="请求失败" description={error} /> : null}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16 }}>
         <Card>
           <Table<Project>
             rowKey="id"
             dataSource={projects}
-            pagination={{ pageSize: 10, hideOnSinglePage: true }}
+            pagination={{ pageSize: 15, hideOnSinglePage: true }}
             columns={[
               {
                 title: '项目',
-                dataIndex: 'name',
+                key: 'name',
                 render: (_, p) => (
                   <Space direction="vertical" size={0}>
                     <Link to={`/projects/${p.id}`} style={{ fontWeight: 700 }}>
-                      {p.name}
+                      {p.order_no}
                     </Link>
+                    {p.end_customer && (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        终端: {p.end_customer}
+                      </Typography.Text>
+                    )}
+                  </Space>
+                ),
+                sorter: (a, b) => a.order_no.localeCompare(b.order_no),
+              },
+              {
+                title: '设备',
+                key: 'equipment',
+                render: (_, p) => (
+                  <Space size={4}>
+                    <Tag>{p.equipment_category || '-'}</Tag>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {p.code ?? '-'}
+                      ×{p.equipment_quantity}
                     </Typography.Text>
                   </Space>
                 ),
               },
               {
-                title: '类型',
-                dataIndex: 'type',
-                render: (v: Project['type']) => v ?? '-',
-              },
-              {
-                title: '优先级',
-                dataIndex: 'priority',
-                render: (v: number) => <Tag color={v >= 4 ? 'red' : v >= 3 ? 'orange' : 'green'}>{v}</Tag>,
-              },
-              {
                 title: '状态',
-                dataIndex: 'status',
-                render: (v: Project['status']) => <Tag color="blue">{v}</Tag>,
+                dataIndex: 'is_abnormal',
+                render: (v: boolean) => (v ? <Tag color="red">异常</Tag> : <Tag color="green">正常</Tag>),
               },
               {
-                title: '',
-                key: 'actions',
-                width: 90,
+                title: '收款',
+                dataIndex: 'contract_payment_progress',
+                render: (v: number | null) =>
+                  v != null ? (
+                    <Tag color={v >= 1 ? 'green' : v >= 0.6 ? 'blue' : 'orange'}>
+                      {(v * 100).toFixed(0)}%
+                    </Tag>
+                  ) : (
+                    '-'
+                  ),
+              },
+              {
+                title: '交期',
+                key: 'delivery',
+                render: (_, p) => fmtDate(p.contract_expected_delivery_date),
+              },
+              {
+                title: '工序',
+                key: 'phases',
                 render: (_, p) => (
-                  <Link to={`/projects/${p.id}`} style={{ fontSize: 12 }}>
-                    工作台
-                  </Link>
+                  <Space size={2}>
+                    {p.phases.slice(0, 5).map((ph) => {
+                      const overdue = ph.planned_end_date && ph.actual_end_date
+                        ? new Date(ph.actual_end_date) > new Date(ph.planned_end_date)
+                        : false
+                      return (
+                        <Tag
+                          key={ph.seq}
+                          color={overdue ? 'red' : ph.actual_end_date ? 'green' : 'default'}
+                          style={{ fontSize: 10, padding: '0 4px', lineHeight: '18px' }}
+                        >
+                          {ph.phase_name}
+                        </Tag>
+                      )
+                    })}
+                  </Space>
                 ),
               },
             ]}
@@ -118,42 +163,52 @@ export function ProjectsPage() {
         </Card>
 
         <Card title="新建项目">
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={(values) => void onCreate(values)}
-            initialValues={{ name: '', type: '研发项目', priority: 3, overview: '' }}
-          >
-            <Form.Item name="name" label="项目名称" rules={[{ required: true, message: '请输入项目名称' }]}>
-              <Input placeholder="例如：天裕" />
+          <Form form={form} layout="vertical" onFinish={onCreate}>
+            <Space style={{ width: '100%' }}>
+              <Form.Item name="customer_code" label="客户" rules={[{ required: true }]} style={{ flex: 1 }}>
+                <Input placeholder="浙江东格马" />
+              </Form.Item>
+              <Form.Item name="order_no" label="序号" rules={[{ required: true }]} style={{ width: 80 }}>
+                <Input placeholder="13" />
+              </Form.Item>
+            </Space>
+            <Form.Item name="template_id" label="工序模板">
+              <Select allowClear placeholder="生产项目模板(默认)">
+                {templates.map((t) => (
+                  <Select.Option key={t.id} value={t.id}>
+                    {t.name}
+                  </Select.Option>
+                ))}
+              </Select>
             </Form.Item>
-            <Form.Item label="项目编号">
-              <Input value={generatedCode} disabled />
+            <Form.Item name="equipment_category" label="设备类型">
+              <Select allowClear placeholder="桁架">
+                {EQUIP_CATEGORIES.map((c) => (
+                  <Select.Option key={c} value={c}>
+                    {c}
+                  </Select.Option>
+                ))}
+              </Select>
             </Form.Item>
-            <Form.Item name="type" label="项目类型" rules={[{ required: true, message: '请选择项目类型' }]}>
-              <Select options={PROJECT_TYPES.map((t) => ({ label: t, value: t }))} />
+            <Form.Item name="equipment_spec" label="设备描述">
+              <Input placeholder="2台桁架一拖一" />
             </Form.Item>
-            <Form.Item name="priority" label="优先级" rules={[{ required: true, message: '请输入优先级' }]}>
-              <InputNumber min={1} max={5} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item name="overview" label="项目概述">
-              <Input.TextArea rows={4} placeholder="输入项目的大概描述（可用于会议快速对齐背景）" />
-            </Form.Item>
-            <Form.Item label="概述图片">
-              <Upload
-                multiple
-                beforeUpload={(f) => {
-                  setImages((prev) => [...prev, f])
-                  return false
-                }}
-                onRemove={(f) => {
-                  setImages((prev) => prev.filter((x) => x.uid !== f.uid))
-                }}
-                fileList={uploadFileList}
-              >
-                <Button disabled={loading}>选择图片</Button>
-              </Upload>
-            </Form.Item>
+            <Space>
+              <Form.Item name="equipment_quantity" label="数量" initialValue={1}>
+                <InputNumber min={1} style={{ width: 80 }} />
+              </Form.Item>
+              <Form.Item name="contract_duration_days" label="合同天数">
+                <InputNumber min={0} style={{ width: 90 }} placeholder="30" />
+              </Form.Item>
+            </Space>
+            <Space>
+              <Form.Item name="contract_payment_progress" label="收款进度">
+                <InputNumber min={0} max={1} step={0.1} style={{ width: 90 }} placeholder="0.3" />
+              </Form.Item>
+              <Form.Item name="contract_start_date" label="立项日期">
+                <Input placeholder="2026-05-01" style={{ width: 110 }} />
+              </Form.Item>
+            </Space>
             <Button type="primary" htmlType="submit" loading={loading} block>
               创建
             </Button>
@@ -163,4 +218,3 @@ export function ProjectsPage() {
     </Space>
   )
 }
-

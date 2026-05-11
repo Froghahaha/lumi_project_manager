@@ -1,210 +1,120 @@
-import { useMemo, useState } from 'react'
-import { Card, Col, Row, Space, Statistic, Table, Tag, Typography, theme } from 'antd'
+import { Card, Col, Row, Space, Statistic, Table, Tag, Typography } from 'antd'
 import { useLoaderData, useNavigate } from 'react-router-dom'
 import type { Project } from '../types'
 
-type ProjectTypeGroup = '研发项目' | '品质项目' | '品质问题跟踪' | '其他'
-
-const PROJECT_PRIORITY_OPTIONS = [
-  { label: '紧急', value: 4 },
-  { label: '重要', value: 3 },
-  { label: '中等', value: 2 },
-  { label: '较低', value: 1 },
-] as const
-
-function projectPriorityLabel(v: number): string {
-  return PROJECT_PRIORITY_OPTIONS.find((x) => x.value === v)?.label ?? String(v)
+function phaseOverdue(ph: Project['phases'][0]): boolean {
+  if (!ph.planned_end_date) return false
+  const end = ph.actual_end_date ? new Date(ph.actual_end_date) : new Date()
+  return end > new Date(ph.planned_end_date)
 }
 
-function projectTypeGroup(p: Project): ProjectTypeGroup {
-  const t = (p.type ?? '').trim()
-  if (t === '研发项目') return '研发项目'
-  if (t === '品质项目') return '品质项目'
-  if (t === '品质问题跟踪') return '品质问题跟踪'
-  return '其他'
-}
-
-function isOverdue(p: Project): boolean {
-  if (!p.target_date) return false
-  if (p.status === '已完成') return false
-  const end = new Date(p.target_date)
-  const today = new Date()
-  end.setHours(0, 0, 0, 0)
-  today.setHours(0, 0, 0, 0)
-  return end.getTime() < today.getTime()
-}
-
-function statusCounts(projects: Project[]) {
-  const map = new Map<Project['status'], number>()
-  for (const p of projects) map.set(p.status, (map.get(p.status) ?? 0) + 1)
-  return map
-}
-
-function Section(props: { title: string; data: Project[] }) {
-  const navigate = useNavigate()
-  const { token } = theme.useToken()
-  const counts = statusCounts(props.data)
-  const overdueCount = props.data.filter(isOverdue).length
-  const [selected, setSelected] = useState<Project['status'] | 'ALL'>('ALL')
-  const filtered = useMemo(() => {
-    if (selected === 'ALL') return props.data
-    return props.data.filter((p) => p.status === selected)
-  }, [props.data, selected])
-  const top = useMemo(
-    () => [...filtered].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 8),
-    [filtered],
-  )
-
-  return (
-    <Card
-      title={
-        <Space size={10} wrap>
-          <Typography.Text style={{ fontSize: token.fontSizeHeading4, fontWeight: token.fontWeightStrong }}>
-            {props.title}
-          </Typography.Text>
-          <Tag color="blue">{props.data.length} 项</Tag>
-          {overdueCount > 0 ? <Tag color="red">逾期 {overdueCount}</Tag> : <Tag>无逾期</Tag>}
-        </Space>
-      }
-    >
-      <Row gutter={[12, 12]}>
-        <Col span={6}>
-          <Card
-            size="small"
-            hoverable
-            onClick={() => setSelected((p) => (p === '进行中' ? 'ALL' : '进行中'))}
-            style={{ borderColor: selected === '进行中' ? '#1677ff' : undefined }}
-          >
-            <Statistic title="进行中" value={counts.get('进行中') ?? 0} />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card
-            size="small"
-            hoverable
-            onClick={() => setSelected((p) => (p === '规划中' ? 'ALL' : '规划中'))}
-            style={{ borderColor: selected === '规划中' ? '#1677ff' : undefined }}
-          >
-            <Statistic title="规划中" value={counts.get('规划中') ?? 0} />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card
-            size="small"
-            hoverable
-            onClick={() => setSelected((p) => (p === '已完成' ? 'ALL' : '已完成'))}
-            style={{ borderColor: selected === '已完成' ? '#1677ff' : undefined }}
-          >
-            <Statistic title="已完成" value={counts.get('已完成') ?? 0} />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card
-            size="small"
-            hoverable
-            onClick={() => setSelected((p) => (p === '已暂停' ? 'ALL' : '已暂停'))}
-            style={{ borderColor: selected === '已暂停' ? '#1677ff' : undefined }}
-          >
-            <Statistic title="已暂停" value={counts.get('已暂停') ?? 0} />
-          </Card>
-        </Col>
-      </Row>
-
-      <div style={{ marginTop: 12 }}>
-        <Table<Project>
-          rowKey="id"
-          size="small"
-          dataSource={top}
-          pagination={false}
-          onRow={(p) => ({ onClick: () => navigate(`/projects/${p.id}`) })}
-          columns={[
-            {
-              title: '项目',
-              dataIndex: 'name',
-              render: (_, p) => (
-                <Space direction="vertical" size={0}>
-                  <Typography.Text style={{ fontWeight: token.fontWeightStrong }}>{p.name}</Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
-                    {p.code ?? '-'} · {p.type ?? '-'}
-                  </Typography.Text>
-                </Space>
-              ),
-            },
-            {
-              title: '状态',
-              dataIndex: 'status',
-              width: 100,
-              render: (v: Project['status']) => <Tag color="blue">{v}</Tag>,
-            },
-            {
-              title: '优先级',
-              dataIndex: 'priority',
-              width: 90,
-              render: (v: number) => (
-                <Tag color={v >= 4 ? 'red' : v >= 3 ? 'orange' : 'green'}>{projectPriorityLabel(v)}</Tag>
-              ),
-            },
-            {
-              title: '目标',
-              dataIndex: 'target_date',
-              width: 120,
-              render: (v: Project['target_date'], p) => (
-                <Space size={6}>
-                  <Typography.Text style={{ fontSize: token.fontSizeSM }}>{v ?? '-'}</Typography.Text>
-                  {isOverdue(p) ? <Tag color="red">逾期</Tag> : null}
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </div>
-    </Card>
-  )
+function projectHasOverdue(p: Project): boolean {
+  return p.phases.some(phaseOverdue)
 }
 
 export function DashboardPage() {
   const { projects } = useLoaderData() as { projects: Project[] }
-  const { token } = theme.useToken()
+  const navigate = useNavigate()
 
-  const { rd, quality, qualityTrack, other } = useMemo(() => {
-    const rd: Project[] = []
-    const quality: Project[] = []
-    const qualityTrack: Project[] = []
-    const other: Project[] = []
-    for (const p of projects) {
-      const g = projectTypeGroup(p)
-      if (g === '研发项目') rd.push(p)
-      else if (g === '品质项目') quality.push(p)
-      else if (g === '品质问题跟踪') qualityTrack.push(p)
-      else other.push(p)
-    }
-    return { rd, quality, qualityTrack, other }
-  }, [projects])
+  const abnormal = projects.filter((p) => p.is_abnormal).length
+  const overdue = projects.filter(projectHasOverdue).length
+  const totalPhases = projects.reduce((sum, p) => sum + p.phases.length, 0)
+  const overduePhases = projects.reduce(
+    (sum, p) => sum + p.phases.filter(phaseOverdue).length,
+    0,
+  )
+
+  const categories = new Map<string, number>()
+  projects.forEach((p) => {
+    const cat = p.equipment_category || '其他'
+    categories.set(cat, (categories.get(cat) ?? 0) + 1)
+  })
 
   return (
-    <Space direction="vertical" size={token.marginLG} style={{ width: '100%' }}>
-      <Space align="baseline" style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          仪表盘
-        </Typography.Title>
-        <Tag color="blue">共 {projects.length} 项</Tag>
-      </Space>
+    <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Typography.Title level={3} style={{ margin: 0 }}>
+        仪表盘
+      </Typography.Title>
 
-      <Row gutter={[token.marginLG, token.marginLG]}>
-        <Col xs={24} xl={12}>
-          <Section title="研发项目现状"  data={rd} />
+      <Row gutter={16}>
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="项目总数" value={projects.length} />
+          </Card>
         </Col>
-        <Col xs={24} xl={12}>
-          <Section title="品质项目现状" data={quality} />
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="异常项目" value={abnormal} valueStyle={{ color: abnormal > 0 ? 'red' : undefined }} />
+          </Card>
         </Col>
-        <Col xs={24} xl={12}>
-          <Section title="品质问题跟踪现状" data={qualityTrack} />
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="含逾期工序" value={overdue} valueStyle={{ color: overdue > 0 ? 'orange' : undefined }} />
+          </Card>
         </Col>
-        {other.length > 0 ? (
-          <Col xs={24} xl={12}>
-            <Section title="其他项目" data={other} />
-          </Col>
-        ) : null}
+        <Col span={6}>
+          <Card size="small">
+            <Statistic title="逾期工序" value={overduePhases} suffix={`/ ${totalPhases}`} />
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={16}>
+        <Col span={12}>
+          <Card size="small" title="设备类型分布">
+            <Space direction="vertical" size={4}>
+              {[...categories.entries()]
+                .sort((a, b) => b[1] - a[1])
+                .map(([cat, cnt]) => (
+                  <Space key={cat} style={{ justifyContent: 'space-between', width: '100%' }}>
+                    <Tag>{cat}</Tag>
+                    <span>{cnt} 个</span>
+                  </Space>
+                ))}
+            </Space>
+          </Card>
+        </Col>
+        <Col span={12}>
+          <Card size="small" title="最近项目">
+            <Table<Project>
+              rowKey="id"
+              dataSource={[...projects].slice(0, 8)}
+              size="small"
+              pagination={false}
+              onRow={(record) => ({
+                onClick: () => navigate(`/projects/${record.id}`),
+                style: { cursor: 'pointer' },
+              })}
+              columns={[
+                {
+                  title: '项目',
+                  dataIndex: 'order_no',
+                  render: (v: string, p) => (
+                    <Space direction="vertical" size={0}>
+                      <span style={{ fontWeight: 600 }}>{v}</span>
+                      {p.end_customer && (
+                        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                          终端: {p.end_customer}
+                        </Typography.Text>
+                      )}
+                    </Space>
+                  ),
+                },
+                {
+                  title: '设备',
+                  render: (_, p) => (
+                    <Tag>{p.equipment_category || '-'}</Tag>
+                  ),
+                },
+                {
+                  title: '状态',
+                  render: (_, p) =>
+                    p.is_abnormal ? <Tag color="red">异常</Tag> : <Tag color="green">正常</Tag>,
+                },
+              ]}
+            />
+          </Card>
+        </Col>
       </Row>
     </Space>
   )

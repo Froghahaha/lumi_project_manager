@@ -1,49 +1,45 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from sqlmodel import Session, col, func, select
+from sqlmodel import Session, select, update
 
-from .db import init_db, session_scope
+from .db import init_db, session_scope, PRODUCTION_TEMPLATE_ID
 from .models import (
-    Attachment,
-    AuditAction,
-    AuditLog,
-    Comment,
-    Issue,
-    IssueStatus,
+    Customer,
+    PhaseIncident,
+    PhaseTemplateItem,
     Project,
-    ProjectOverviewImage,
-    SubTask,
-    TimelineEvent,
-    TimelineEventAttachment,
+    ProjectPhase,
+    ProjectTeam,
 )
 from .schemas import (
-    AttachmentOut,
-    AuditLogOut,
-    CommentCreate,
-    CommentOut,
-    IssueCreate,
-    IssueOut,
-    IssueUpdate,
-    ProjectActivityOut,
+    CustomerCreate,
+    CustomerOut,
+    PhaseIncidentCreate,
+    PhaseIncidentOut,
+    PhaseTemplateItemOut,
+    PhaseTemplateOut,
     ProjectCreate,
-    ProjectOverviewImageOut,
     ProjectOut,
+    ProjectPhaseCreate,
+    ProjectPhaseOut,
+    ProjectTeamCreate,
+    ProjectTeamOut,
     ProjectUpdate,
-    SubTaskCreate,
-    SubTaskOut,
-    SubTaskUpdate,
-    TimelineEventAttachmentOut,
-    TimelineEventCreate,
-    TimelineEventOut,
+)
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
@@ -63,897 +59,427 @@ def get_actor(x_user: str | None = Header(default=None)) -> str:
     return x_user.strip() if x_user and x_user.strip() else "system"
 
 
-def dumps_safe(obj: Any) -> str:
-    return json.dumps(obj, ensure_ascii=False, default=str)
-
-
-def issue_to_out(issue: Issue) -> IssueOut:
-    if not issue.issue_key:
-        raise ValueError("issue_key is missing")
-    return IssueOut(
-        id=issue.id,
-        issue_key=issue.issue_key,
-        title=issue.title,
-        description=issue.description,
-        project_id=issue.project_id,
-        subtask_id=issue.subtask_id,
-        type=issue.type,
-        category=issue.get_list("category_json"),
-        equipment_type=issue.get_list("equipment_type_json"),
-        severity=issue.severity,
-        reporter=issue.reporter,
-        assignee=issue.assignee,
-        related_person=issue.get_list("related_person_json"),
-        status=issue.status,
-        progress=issue.progress,
-        is_blocked=issue.is_blocked,
-        block_reason=issue.block_reason,
-        planned_start=issue.planned_start,
-        planned_end=issue.planned_end,
-        actual_start=issue.actual_start,
-        actual_end=issue.actual_end,
-        tags=issue.get_list("tags_json"),
-        created_at=issue.created_at,
-        updated_at=issue.updated_at,
-        is_delayed=issue.is_delayed,
-        delay_days=issue.delay_days,
+def _phase_to_out(ph: ProjectPhase) -> ProjectPhaseOut:
+    return ProjectPhaseOut(
+        id=ph.id,
+        project_id=ph.project_id,
+        seq=ph.seq,
+        phase_name=ph.phase_name,
+        responsible=ph.responsible,
+        start_date=ph.start_date,
+        warning_date=ph.warning_date,
+        planned_end_date=ph.planned_end_date,
+        planned_duration=ph.planned_duration,
+        actual_end_date=ph.actual_end_date,
+        actual_duration=ph.actual_duration,
+        created_at=ph.created_at,
+        updated_at=ph.updated_at,
     )
 
 
-def project_to_out(project: Project, overview_images: list[ProjectOverviewImageOut] | None = None) -> ProjectOut:
+def _incident_to_out(inc: PhaseIncident) -> PhaseIncidentOut:
+    return PhaseIncidentOut(
+        id=inc.id,
+        phase_id=inc.phase_id,
+        occurred_at=inc.occurred_at,
+        category=inc.category,
+        description=inc.description,
+        created_at=inc.created_at,
+    )
+
+
+def _team_to_out(tm: ProjectTeam) -> ProjectTeamOut:
+    return ProjectTeamOut(
+        id=tm.id,
+        project_id=tm.project_id,
+        person_name=tm.person_name,
+        role=tm.role,
+        created_at=tm.created_at,
+    )
+
+
+def _project_to_out(p: Project, phases: list[ProjectPhase], team: list[ProjectTeam]) -> ProjectOut:
     return ProjectOut(
-        id=project.id,
-        code=project.code,
-        name=project.name,
-        type=project.type,
-        overview=project.overview,
-        priority=project.priority,
-        status=project.status,
-        start_date=project.start_date,
-        target_date=project.target_date,
-        archived=project.archived,
-        created_at=project.created_at,
-        updated_at=project.updated_at,
-        overview_images=overview_images or [],
+        id=p.id,
+        order_no=p.order_no,
+        customer_id=p.customer_id,
+        end_customer=p.end_customer,
+        template_id=p.template_id,
+        equipment_category=p.equipment_category,
+        equipment_quantity=p.equipment_quantity,
+        equipment_spec=p.equipment_spec,
+        contract_start_date=p.contract_start_date,
+        contract_duration_days=p.contract_duration_days,
+        contract_expected_delivery_date=p.contract_expected_delivery_date,
+        contract_actual_delivery_days=p.contract_actual_delivery_days,
+        contract_payment_progress=p.contract_payment_progress,
+        is_abnormal=p.is_abnormal,
+        phases=[_phase_to_out(ph) for ph in phases],
+        team=[_team_to_out(tm) for tm in team],
+        created_at=p.created_at,
+        updated_at=p.updated_at,
     )
 
 
-def attachment_to_out(att: Attachment, request: Request) -> AttachmentOut:
-    return AttachmentOut(
-        id=att.id,
-        issue_id=att.issue_id,
-        comment_id=att.comment_id,
-        uploader=att.uploader,
-        filename=att.filename,
-        content_type=att.content_type,
-        size=att.size,
-        created_at=att.created_at,
-        url=str(request.url_for("download_attachment", attachment_id=str(att.id))),
-    )
-
-
-def project_overview_image_to_out(img: ProjectOverviewImage, request: Request) -> ProjectOverviewImageOut:
-    return ProjectOverviewImageOut(
-        id=img.id,
-        project_id=img.project_id,
-        uploader=img.uploader,
-        filename=img.filename,
-        content_type=img.content_type,
-        size=img.size,
-        created_at=img.created_at,
-        url=str(request.url_for("download_project_overview_image", image_id=str(img.id))),
-    )
-
-
-def timeline_event_to_out(
-    e: TimelineEvent, *, attachments: list[TimelineEventAttachmentOut] | None = None
-) -> TimelineEventOut:
-    return TimelineEventOut(
-        id=e.id,
-        project_id=e.project_id,
-        issue_id=e.issue_id,
-        actor=e.actor,
-        occurred_at=e.occurred_at,
-        description=e.description,
-        related_person=e.get_related_person(),
-        created_at=e.created_at,
-        attachments=attachments or [],
-    )
-
-
-def timeline_event_attachment_to_out(att: TimelineEventAttachment, request: Request) -> TimelineEventAttachmentOut:
-    return TimelineEventAttachmentOut(
-        id=att.id,
-        event_id=att.event_id,
-        uploader=att.uploader,
-        filename=att.filename,
-        content_type=att.content_type,
-        size=att.size,
-        created_at=att.created_at,
-        url=str(request.url_for("download_timeline_event_attachment", attachment_id=str(att.id))),
-    )
-
-
-def audit_to_out(a: AuditLog) -> AuditLogOut:
-    try:
-        from_value = json.loads(a.from_value) if a.from_value else {}
-    except Exception:
-        from_value = {}
-    try:
-        to_value = json.loads(a.to_value) if a.to_value else {}
-    except Exception:
-        to_value = {}
-    return AuditLogOut(
-        id=a.id,
-        issue_id=a.issue_id,
-        actor=a.actor,
-        action=str(a.action),
-        timestamp=a.timestamp,
-        from_value=from_value,
-        to_value=to_value,
-        comment=a.comment,
-        ip_address=a.ip_address,
-    )
-
-
-def record_audit(
-    *,
-    session: Session,
-    issue_id: uuid.UUID,
-    actor: str,
-    action: AuditAction,
-    from_value: dict[str, Any],
-    to_value: dict[str, Any],
-    comment: str | None,
-    ip_address: str | None,
-) -> None:
-    log = AuditLog(
-        issue_id=issue_id,
-        actor=actor,
-        action=action,
-        comment=comment,
-        ip_address=ip_address,
-    )
-    log.set_from_to(from_value, to_value)
-    session.add(log)
-
-
-def issue_snapshot(issue: Issue) -> dict[str, Any]:
-    return {
-        "title": issue.title,
-        "description": issue.description,
-        "project_id": str(issue.project_id) if issue.project_id else None,
-        "subtask_id": str(issue.subtask_id) if issue.subtask_id else None,
-        "type": issue.type,
-        "category": issue.get_list("category_json"),
-        "equipment_type": issue.get_list("equipment_type_json"),
-        "severity": issue.severity,
-        "reporter": issue.reporter,
-        "assignee": issue.assignee,
-        "related_person": issue.get_list("related_person_json"),
-        "status": str(issue.status),
-        "progress": issue.progress,
-        "is_blocked": issue.is_blocked,
-        "block_reason": issue.block_reason,
-        "planned_start": issue.planned_start,
-        "planned_end": issue.planned_end,
-        "actual_start": issue.actual_start,
-        "actual_end": issue.actual_end,
-        "tags": issue.get_list("tags_json"),
-        "updated_at": issue.updated_at,
-    }
-
-
-def compute_issue_key(*, year: int, issue_no: int) -> str:
-    return f"ISS-{year}-{issue_no:04d}"
-
-
-def subtask_to_out(st: SubTask) -> SubTaskOut:
-    return SubTaskOut(
-        id=st.id,
-        project_id=st.project_id,
-        name=st.name,
-        description=st.description,
-        priority=st.priority,
-        created_at=st.created_at,
-        updated_at=st.updated_at,
-    )
-
-
-app = FastAPI(title="Project Manager API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def _get_or_create_customer(session: Session, code: str) -> Customer:
+    customer = session.exec(select(Customer).where(Customer.code == code)).first()
+    if not customer:
+        customer = Customer(code=code, name=code)
+        session.add(customer)
+        session.flush()
+    return customer
 
 
 @app.on_event("startup")
-def _startup() -> None:
+def on_startup() -> None:
     init_db()
-    with session_scope() as session:
-        projects = session.exec(select(Project)).all()
-        for p in projects:
-            default_stmt = select(SubTask).where(SubTask.project_id == p.id, SubTask.name == "未分组")
-            default = session.exec(default_stmt).first()
-            if not default:
-                now = utcnow()
-                default = SubTask(project_id=p.id, name="未分组", description=None, priority=1, created_at=now, updated_at=now)
-                session.add(default)
-                session.commit()
-                session.refresh(default)
-
-            issue_stmt = select(Issue).where(Issue.project_id == p.id)
-            for i in session.exec(issue_stmt).all():
-                if i.subtask_id is None:
-                    i.subtask_id = default.id
-                if i.project_id is None:
-                    i.project_id = p.id
-                session.add(i)
-        session.commit()
 
 
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+# ═══════════════════════════════════════════════════════════
+# Customer
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/customers", response_model=list[CustomerOut])
+def list_customers(session: Session = Depends(get_session)):
+    return list(session.exec(select(Customer)))
 
 
-@app.post("/projects", response_model=ProjectOut)
-def create_project(
-    payload: ProjectCreate,
-    session: Session = Depends(get_session),
-) -> ProjectOut:
-    now = utcnow()
-    day_key = now.strftime("%Y%m%d")
-    prefix = f"PRJ-{day_key}-"
-    count_stmt = select(func.count()).select_from(Project).where(col(Project.code).like(f"{prefix}%"))
-    count_today = session.exec(count_stmt).one()
-    code = f"{prefix}{int(count_today) + 1:03d}"
-
-    project = Project(
-        code=code,
-        name=payload.name,
-        type=payload.type,
-        overview=payload.overview,
-        priority=payload.priority,
-        status=payload.status,
-        start_date=payload.start_date,
-        target_date=payload.target_date,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(project)
-    session.commit()
-    session.refresh(project)
-    return project_to_out(project)
+@app.post("/customers", response_model=CustomerOut, status_code=201)
+def create_customer(body: CustomerCreate, session: Session = Depends(get_session)):
+    existing = session.exec(select(Customer).where(Customer.code == body.code)).first()
+    if existing:
+        raise HTTPException(400, "customer code already exists")
+    c = Customer(code=body.code, name=body.name)
+    session.add(c)
+    return c
 
 
-@app.get("/projects", response_model=list[ProjectOut])
-def list_projects(
-    include_archived: bool = Query(default=False),
-    session: Session = Depends(get_session),
-) -> list[ProjectOut]:
-    stmt = select(Project)
-    if not include_archived:
-        stmt = stmt.where(Project.archived == False)  # noqa: E712
-    stmt = stmt.order_by(col(Project.updated_at).desc())
-    projects = session.exec(stmt).all()
-    return [project_to_out(p) for p in projects]
+# ═══════════════════════════════════════════════════════════
+# Template
+# ═══════════════════════════════════════════════════════════
 
-
-@app.get("/projects/{project_id}", response_model=ProjectOut)
-def get_project(request: Request, project_id: uuid.UUID, session: Session = Depends(get_session)) -> ProjectOut:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="project not found")
-    imgs_stmt = (
-        select(ProjectOverviewImage)
-        .where(ProjectOverviewImage.project_id == project_id)
-        .order_by(col(ProjectOverviewImage.created_at).desc())
-    )
-    imgs = session.exec(imgs_stmt).all()
-    return project_to_out(project, overview_images=[project_overview_image_to_out(i, request) for i in imgs])
-
-
-@app.get("/projects/{project_id}/subtasks", response_model=list[SubTaskOut])
-def list_subtasks(project_id: uuid.UUID, session: Session = Depends(get_session)) -> list[SubTaskOut]:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="project not found")
-    stmt = select(SubTask).where(SubTask.project_id == project_id).order_by(col(SubTask.priority).desc(), col(SubTask.updated_at).desc())
-    rows = session.exec(stmt).all()
-    return [subtask_to_out(s) for s in rows]
-
-
-@app.post("/projects/{project_id}/subtasks", response_model=SubTaskOut)
-def create_subtask(
-    project_id: uuid.UUID,
-    payload: SubTaskCreate,
-    session: Session = Depends(get_session),
-) -> SubTaskOut:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="project not found")
-    now = utcnow()
-    st = SubTask(
-        project_id=project_id,
-        name=payload.name,
-        description=payload.description,
-        priority=payload.priority,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(st)
-    project.updated_at = now
-    session.add(project)
-    session.commit()
-    session.refresh(st)
-    return subtask_to_out(st)
-
-
-@app.patch("/subtasks/{subtask_id}", response_model=SubTaskOut)
-def update_subtask(
-    subtask_id: uuid.UUID,
-    payload: SubTaskUpdate,
-    session: Session = Depends(get_session),
-) -> SubTaskOut:
-    st = session.get(SubTask, subtask_id)
-    if not st:
-        raise HTTPException(status_code=404, detail="subtask not found")
-    now = utcnow()
-    if payload.name is not None:
-        st.name = payload.name
-    if payload.description is not None:
-        st.description = payload.description
-    if payload.priority is not None:
-        st.priority = payload.priority
-    st.updated_at = now
-    project = session.get(Project, st.project_id)
-    if project:
-        project.updated_at = now
-        session.add(project)
-    session.add(st)
-    session.commit()
-    session.refresh(st)
-    return subtask_to_out(st)
-
-
-@app.post("/projects/{project_id}/overview_images", response_model=ProjectOverviewImageOut)
-def upload_project_overview_image(
-    request: Request,
-    project_id: uuid.UUID,
-    file: UploadFile = File(...),
-    session: Session = Depends(get_session),
-    actor: str = Depends(get_actor),
-) -> ProjectOverviewImageOut:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="project not found")
-
-    img_id = uuid.uuid4()
-    safe_name = Path(file.filename or "file").name
-    stored = UPLOAD_DIR / f"proj_{img_id}_{safe_name}"
-    content = file.file.read()
-    stored.write_bytes(content)
-
-    img = ProjectOverviewImage(
-        id=img_id,
-        project_id=project_id,
-        uploader=actor,
-        filename=safe_name,
-        content_type=file.content_type,
-        size=len(content),
-        storage_path=str(stored),
-    )
-    project.updated_at = utcnow()
-    session.add(img)
-    session.add(project)
-    session.commit()
-    session.refresh(img)
-    return project_overview_image_to_out(img, request)
-
-
-@app.get("/projects/{project_id}/overview_images", response_model=list[ProjectOverviewImageOut])
-def list_project_overview_images(
-    request: Request,
-    project_id: uuid.UUID,
-    session: Session = Depends(get_session),
-) -> list[ProjectOverviewImageOut]:
-    stmt = (
-        select(ProjectOverviewImage)
-        .where(ProjectOverviewImage.project_id == project_id)
-        .order_by(col(ProjectOverviewImage.created_at).desc())
-    )
-    imgs = session.exec(stmt).all()
-    return [project_overview_image_to_out(i, request) for i in imgs]
-
-
-@app.get("/projects/overview_images/{image_id}/download", name="download_project_overview_image")
-def download_project_overview_image(image_id: uuid.UUID, session: Session = Depends(get_session)) -> FileResponse:
-    img = session.get(ProjectOverviewImage, image_id)
-    if not img:
-        raise HTTPException(status_code=404, detail="image not found")
-    p = Path(img.storage_path)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="file missing on disk")
-    return FileResponse(path=str(p), filename=img.filename, media_type=img.content_type)
-
-
-@app.get("/projects/{project_id}/activity", response_model=list[ProjectActivityOut])
-def list_project_activity(project_id: uuid.UUID, session: Session = Depends(get_session)) -> list[ProjectActivityOut]:
-    stmt = (
-        select(AuditLog, Issue)
-        .join(Issue, AuditLog.issue_id == Issue.id)
-        .where(Issue.project_id == project_id)
-        .order_by(col(AuditLog.timestamp).desc())
-    )
-    rows = session.exec(stmt).all()
-    out: list[ProjectActivityOut] = []
-    for a, i in rows:
-        out.append(
-            ProjectActivityOut(
-                id=a.id,
-                project_id=project_id,
-                issue_id=a.issue_id,
-                issue_key=i.issue_key or "-",
-                issue_title=i.title,
-                actor=a.actor,
-                action=str(a.action),
-                timestamp=a.timestamp,
-                comment=a.comment,
-                ip_address=a.ip_address,
-            )
-        )
+@app.get("/templates", response_model=list[PhaseTemplateOut])
+def list_templates(session: Session = Depends(get_session)):
+    from .models import PhaseTemplate
+    templates = list(session.exec(select(PhaseTemplate)))
+    out = []
+    for t in templates:
+        items = list(session.exec(
+            select(PhaseTemplateItem).where(PhaseTemplateItem.template_id == t.id)
+        ))
+        out.append(PhaseTemplateOut(
+            id=t.id,
+            name=t.name,
+            description=t.description,
+            items=[PhaseTemplateItemOut(
+                id=item.id, template_id=item.template_id,
+                seq=item.seq, phase_name=item.phase_name,
+                description=item.description,
+            ) for item in sorted(items, key=lambda x: x.seq)],
+            created_at=t.created_at,
+            updated_at=t.updated_at,
+        ))
     return out
 
 
-@app.post("/projects/{project_id}/timeline_events", response_model=TimelineEventOut)
-def create_timeline_event(
-    request: Request,
-    project_id: uuid.UUID,
-    payload: TimelineEventCreate,
+# ═══════════════════════════════════════════════════════════
+# Project CRUD
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/projects", response_model=list[ProjectOut])
+def list_projects(
+    customer_code: str | None = Query(default=None),
+    is_abnormal: bool | None = Query(default=None),
     session: Session = Depends(get_session),
-    actor: str = Depends(get_actor),
-) -> TimelineEventOut:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="project not found")
+):
+    stmt = select(Project)
+    if customer_code:
+        stmt = stmt.join(Customer).where(Customer.code == customer_code)
+    if is_abnormal is not None:
+        stmt = stmt.where(Project.is_abnormal == is_abnormal)
 
-    issue_id = payload.issue_id
-    if issue_id is not None:
-        issue = session.get(Issue, issue_id)
-        if not issue:
-            raise HTTPException(status_code=404, detail="issue not found")
-        if issue.project_id != project_id:
-            raise HTTPException(status_code=400, detail="issue does not belong to project")
+    projects = list(session.exec(stmt))
+    out = []
+    for p in projects:
+        phases = list(session.exec(
+            select(ProjectPhase).where(ProjectPhase.project_id == p.id)
+        ))
+        team = list(session.exec(
+            select(ProjectTeam).where(ProjectTeam.project_id == p.id)
+        ))
+        out.append(_project_to_out(p, phases, team))
+    return out
 
-    e = TimelineEvent(
-        project_id=project_id,
-        issue_id=issue_id,
-        actor=actor,
-        occurred_at=payload.occurred_at,
-        description=payload.description,
+
+@app.get("/projects/{project_id}", response_model=ProjectOut)
+def get_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    phases = list(session.exec(
+        select(ProjectPhase).where(ProjectPhase.project_id == p.id)
+    ))
+    team = list(session.exec(
+        select(ProjectTeam).where(ProjectTeam.project_id == p.id)
+    ))
+    return _project_to_out(p, phases, team)
+
+
+@app.post("/projects", response_model=ProjectOut, status_code=201)
+def create_project(body: ProjectCreate, session: Session = Depends(get_session)):
+    if body.customer_id:
+        customer = session.get(Customer, body.customer_id)
+        if not customer:
+            raise HTTPException(400, "customer not found")
+    else:
+        customer_code = body.order_no.rsplit("-", 1)[0] if "-" in body.order_no else body.order_no
+        customer = _get_or_create_customer(session, customer_code)
+
+    p = Project(
+        order_no=body.order_no,
+        customer_id=customer.id,
+        end_customer=body.end_customer,
+        template_id=body.template_id,
+        equipment_category=body.equipment_category,
+        equipment_quantity=body.equipment_quantity,
+        equipment_spec=body.equipment_spec,
+        contract_start_date=body.contract_start_date,
+        contract_duration_days=body.contract_duration_days,
+        contract_expected_delivery_date=body.contract_expected_delivery_date,
+        contract_actual_delivery_days=body.contract_actual_delivery_days,
+        contract_payment_progress=body.contract_payment_progress,
+        is_abnormal=body.is_abnormal,
     )
-    e.set_related_person(payload.related_person)
-    project.updated_at = utcnow()
-    session.add(e)
-    session.add(project)
-    session.commit()
-    session.refresh(e)
-    return timeline_event_to_out(e, attachments=[])
+    session.add(p)
+    session.flush()
 
+    # 为每个传入的 phase 创建记录
+    for ph in body.phases:
+        session.add(ProjectPhase(
+            project_id=p.id,
+            seq=ph.seq,
+            phase_name=ph.phase_name,
+            responsible=ph.responsible,
+            start_date=ph.start_date,
+            warning_date=ph.warning_date,
+            planned_end_date=ph.planned_end_date,
+            planned_duration=ph.planned_duration,
+            actual_end_date=ph.actual_end_date,
+            actual_duration=ph.actual_duration,
+        ))
 
-@app.get("/projects/{project_id}/timeline_events", response_model=list[TimelineEventOut])
-def list_project_timeline_events(
-    request: Request, project_id: uuid.UUID, session: Session = Depends(get_session)
-) -> list[TimelineEventOut]:
-    stmt = select(TimelineEvent).where(TimelineEvent.project_id == project_id).order_by(col(TimelineEvent.occurred_at).desc())
-    events = session.exec(stmt).all()
-    if not events:
-        return []
+    # 如果没有传入 phases，从模板自动生成
+    if not body.phases and body.template_id:
+        items = list(session.exec(
+            select(PhaseTemplateItem).where(PhaseTemplateItem.template_id == body.template_id)
+        ))
+        for item in sorted(items, key=lambda x: x.seq):
+            session.add(ProjectPhase(
+                project_id=p.id,
+                seq=item.seq,
+                phase_name=item.phase_name,
+            ))
 
-    ids = [e.id for e in events]
-    att_stmt = select(TimelineEventAttachment).where(col(TimelineEventAttachment.event_id).in_(ids))
-    atts = session.exec(att_stmt).all()
-    grouped: dict[uuid.UUID, list[TimelineEventAttachmentOut]] = {}
-    for a in atts:
-        grouped.setdefault(a.event_id, []).append(timeline_event_attachment_to_out(a, request))
+    # Team
+    for tm in body.team:
+        session.add(ProjectTeam(
+            project_id=p.id,
+            person_name=tm.person_name,
+            role=tm.role,
+        ))
 
-    return [timeline_event_to_out(e, attachments=grouped.get(e.id, [])) for e in events]
-
-
-@app.get("/issues/{issue_id}/timeline_events", response_model=list[TimelineEventOut])
-def list_issue_timeline_events(
-    request: Request, issue_id: uuid.UUID, session: Session = Depends(get_session)
-) -> list[TimelineEventOut]:
-    stmt = select(TimelineEvent).where(TimelineEvent.issue_id == issue_id).order_by(col(TimelineEvent.occurred_at).desc())
-    events = session.exec(stmt).all()
-    if not events:
-        return []
-
-    ids = [e.id for e in events]
-    att_stmt = select(TimelineEventAttachment).where(col(TimelineEventAttachment.event_id).in_(ids))
-    atts = session.exec(att_stmt).all()
-    grouped: dict[uuid.UUID, list[TimelineEventAttachmentOut]] = {}
-    for a in atts:
-        grouped.setdefault(a.event_id, []).append(timeline_event_attachment_to_out(a, request))
-
-    return [timeline_event_to_out(e, attachments=grouped.get(e.id, [])) for e in events]
-
-
-@app.post("/timeline_events/{event_id}/attachments", response_model=TimelineEventAttachmentOut)
-def upload_timeline_event_attachment(
-    request: Request,
-    event_id: uuid.UUID,
-    file: UploadFile = File(...),
-    session: Session = Depends(get_session),
-    actor: str = Depends(get_actor),
-) -> TimelineEventAttachmentOut:
-    e = session.get(TimelineEvent, event_id)
-    if not e:
-        raise HTTPException(status_code=404, detail="event not found")
-
-    att_id = uuid.uuid4()
-    safe_name = Path(file.filename or "file").name
-    stored = UPLOAD_DIR / f"evt_{att_id}_{safe_name}"
-    content = file.file.read()
-    stored.write_bytes(content)
-
-    att = TimelineEventAttachment(
-        id=att_id,
-        event_id=event_id,
-        uploader=actor,
-        filename=safe_name,
-        content_type=file.content_type,
-        size=len(content),
-        storage_path=str(stored),
-    )
-    session.add(att)
-    session.commit()
-    session.refresh(att)
-    return timeline_event_attachment_to_out(att, request)
-
-
-@app.get("/timeline_events/{event_id}/attachments", response_model=list[TimelineEventAttachmentOut])
-def list_timeline_event_attachments(
-    request: Request,
-    event_id: uuid.UUID,
-    session: Session = Depends(get_session),
-) -> list[TimelineEventAttachmentOut]:
-    stmt = (
-        select(TimelineEventAttachment)
-        .where(TimelineEventAttachment.event_id == event_id)
-        .order_by(col(TimelineEventAttachment.created_at).desc())
-    )
-    atts = session.exec(stmt).all()
-    return [timeline_event_attachment_to_out(a, request) for a in atts]
-
-
-@app.get("/timeline_attachments/{attachment_id}/download", name="download_timeline_event_attachment")
-def download_timeline_event_attachment(attachment_id: uuid.UUID, session: Session = Depends(get_session)) -> FileResponse:
-    att = session.get(TimelineEventAttachment, attachment_id)
-    if not att:
-        raise HTTPException(status_code=404, detail="attachment not found")
-    p = Path(att.storage_path)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="file missing on disk")
-    return FileResponse(path=str(p), filename=att.filename, media_type=att.content_type)
+    session.flush()
+    phases = list(session.exec(
+        select(ProjectPhase).where(ProjectPhase.project_id == p.id)
+    ))
+    team = list(session.exec(
+        select(ProjectTeam).where(ProjectTeam.project_id == p.id)
+    ))
+    return _project_to_out(p, phases, team)
 
 
 @app.patch("/projects/{project_id}", response_model=ProjectOut)
 def update_project(
     project_id: uuid.UUID,
-    payload: ProjectUpdate,
+    body: ProjectUpdate,
     session: Session = Depends(get_session),
-) -> ProjectOut:
-    project = session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="project not found")
+):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    if body.is_abnormal is not None:
+        p.is_abnormal = body.is_abnormal
+    if body.contract_payment_progress is not None:
+        p.contract_payment_progress = body.contract_payment_progress
+    if body.contract_actual_delivery_days is not None:
+        p.contract_actual_delivery_days = body.contract_actual_delivery_days
+    p.updated_at = utcnow()
+    session.add(p)
+    session.flush()
+    phases = list(session.exec(
+        select(ProjectPhase).where(ProjectPhase.project_id == p.id)
+    ))
+    team = list(session.exec(
+        select(ProjectTeam).where(ProjectTeam.project_id == p.id)
+    ))
+    return _project_to_out(p, phases, team)
 
-    data = payload.model_dump(exclude_unset=True)
-    for k, v in data.items():
-        setattr(project, k, v)
-    project.updated_at = utcnow()
-    session.add(project)
-    session.commit()
-    session.refresh(project)
-    return project_to_out(project)
+
+@app.delete("/projects/{project_id}", status_code=204)
+def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    session.delete(p)
 
 
-@app.post("/issues", response_model=IssueOut)
-def create_issue(
-    request: Request,
-    payload: IssueCreate,
+# ═══════════════════════════════════════════════════════════
+# Phases (nested under project)
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/projects/{project_id}/phases", response_model=list[ProjectPhaseOut])
+def list_phases(project_id: uuid.UUID, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    phases = list(session.exec(
+        select(ProjectPhase).where(ProjectPhase.project_id == project_id)
+    ))
+    return [_phase_to_out(ph) for ph in sorted(phases, key=lambda x: x.seq)]
+
+
+@app.post("/projects/{project_id}/phases", response_model=ProjectPhaseOut, status_code=201)
+def add_phase(project_id: uuid.UUID, body: ProjectPhaseCreate, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    ph = ProjectPhase(
+        project_id=project_id,
+        seq=body.seq,
+        phase_name=body.phase_name,
+        responsible=body.responsible,
+        start_date=body.start_date,
+        warning_date=body.warning_date,
+        planned_end_date=body.planned_end_date,
+        planned_duration=body.planned_duration,
+        actual_end_date=body.actual_end_date,
+        actual_duration=body.actual_duration,
+    )
+    session.add(ph)
+    session.flush()
+
+    for inc in body.incidents:
+        session.add(PhaseIncident(
+            phase_id=ph.id,
+            occurred_at=inc.occurred_at,
+            category=inc.category,
+            description=inc.description,
+        ))
+
+    return _phase_to_out(ph)
+
+
+@app.patch("/projects/{project_id}/phases/{phase_id}", response_model=ProjectPhaseOut)
+def update_phase(
+    project_id: uuid.UUID,
+    phase_id: uuid.UUID,
+    body: ProjectPhaseCreate,
     session: Session = Depends(get_session),
-    actor: str = Depends(get_actor),
-) -> IssueOut:
-    if payload.subtask_id is None:
-        if payload.project_id is None:
-            raise HTTPException(status_code=400, detail="subtask_id is required")
-        default_stmt = select(SubTask).where(SubTask.project_id == payload.project_id, SubTask.name == "未分组")
-        default = session.exec(default_stmt).first()
-        if not default:
-            now = utcnow()
-            default = SubTask(
-                project_id=payload.project_id,
-                name="未分组",
-                description=None,
-                priority=1,
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(default)
-            session.commit()
-            session.refresh(default)
-        st = default
-    else:
-        st = session.get(SubTask, payload.subtask_id)
-        if not st:
-            raise HTTPException(status_code=404, detail="subtask not found")
-        if payload.project_id is not None and st.project_id != payload.project_id:
-            raise HTTPException(status_code=400, detail="subtask does not belong to project")
+):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph or ph.project_id != project_id:
+        raise HTTPException(404, "phase not found")
+    if body.seq is not None:
+        ph.seq = body.seq
+    if body.phase_name is not None:
+        ph.phase_name = body.phase_name
+    if body.responsible is not None:
+        ph.responsible = body.responsible
+    ph.start_date = body.start_date
+    ph.warning_date = body.warning_date
+    ph.planned_end_date = body.planned_end_date
+    ph.planned_duration = body.planned_duration
+    ph.actual_end_date = body.actual_end_date
+    ph.actual_duration = body.actual_duration
+    ph.updated_at = utcnow()
+    session.add(ph)
+    return _phase_to_out(ph)
 
-    now = utcnow()
-    year = now.year
 
-    max_no_stmt = select(func.max(Issue.issue_no)).where(col(Issue.issue_key).like(f"ISS-{year}-%"))
-    max_no = session.exec(max_no_stmt).one()
-    next_no = (max_no or 0) + 1
+@app.delete("/projects/{project_id}/phases/{phase_id}", status_code=204)
+def delete_phase(project_id: uuid.UUID, phase_id: uuid.UUID, session: Session = Depends(get_session)):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph or ph.project_id != project_id:
+        raise HTTPException(404, "phase not found")
+    session.delete(ph)
 
-    issue = Issue(
-        issue_no=next_no,
-        issue_key=compute_issue_key(year=year, issue_no=next_no),
-        title=payload.title,
-        description=payload.description,
-        project_id=st.project_id,
-        subtask_id=st.id,
-        type=payload.type,
-        severity=payload.severity,
-        reporter=payload.reporter,
-        assignee=payload.assignee,
-        status=payload.status,
-        progress=payload.progress,
-        is_blocked=payload.is_blocked,
-        block_reason=payload.block_reason,
-        planned_start=payload.planned_start,
-        planned_end=payload.planned_end,
-        created_at=now,
-        updated_at=now,
+
+# ═══════════════════════════════════════════════════════════
+# Incidents (nested under phase)
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/phases/{phase_id}/incidents", response_model=list[PhaseIncidentOut])
+def list_incidents(phase_id: uuid.UUID, session: Session = Depends(get_session)):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph:
+        raise HTTPException(404, "phase not found")
+    return list(session.exec(
+        select(PhaseIncident).where(PhaseIncident.phase_id == phase_id)
+    ))
+
+
+@app.post("/phases/{phase_id}/incidents", response_model=PhaseIncidentOut, status_code=201)
+def add_incident(phase_id: uuid.UUID, body: PhaseIncidentCreate, session: Session = Depends(get_session)):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph:
+        raise HTTPException(404, "phase not found")
+    inc = PhaseIncident(
+        phase_id=phase_id,
+        occurred_at=body.occurred_at,
+        category=body.category,
+        description=body.description,
     )
-    issue.set_list("category_json", payload.category)
-    issue.set_list("equipment_type_json", payload.equipment_type)
-    issue.set_list("related_person_json", payload.related_person)
-    issue.set_list("tags_json", payload.tags)
-
-    session.add(issue)
-    record_audit(
-        session=session,
-        issue_id=issue.id,
-        actor=actor,
-        action=AuditAction.create,
-        from_value={},
-        to_value=issue_snapshot(issue),
-        comment=None,
-        ip_address=request.client.host if request.client else None,
-    )
-    session.commit()
-    session.refresh(issue)
-    return issue_to_out(issue)
+    session.add(inc)
+    session.flush()
+    return _incident_to_out(inc)
 
 
-@app.get("/issues", response_model=list[IssueOut])
-def list_issues(
-    project_id: uuid.UUID | None = Query(default=None),
-    subtask_id: uuid.UUID | None = Query(default=None),
-    status: IssueStatus | None = Query(default=None),
-    assignee: str | None = Query(default=None),
-    q: str | None = Query(default=None),
-    include_archived: bool = Query(default=False),
-    session: Session = Depends(get_session),
-) -> list[IssueOut]:
-    stmt = select(Issue)
-    if project_id:
-        stmt = stmt.where(Issue.project_id == project_id)
-    if subtask_id:
-        stmt = stmt.where(Issue.subtask_id == subtask_id)
-    if status:
-        stmt = stmt.where(Issue.status == status)
-    if assignee:
-        stmt = stmt.where(Issue.assignee == assignee)
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where((Issue.title.like(like)) | (Issue.description.like(like)))
-    if not include_archived:
-        stmt = stmt.where(Issue.status != IssueStatus.archived)
-    stmt = stmt.order_by(col(Issue.updated_at).desc())
-    issues = session.exec(stmt).all()
-    return [issue_to_out(i) for i in issues]
+@app.delete("/phases/{phase_id}/incidents/{incident_id}", status_code=204)
+def delete_incident(phase_id: uuid.UUID, incident_id: uuid.UUID, session: Session = Depends(get_session)):
+    inc = session.get(PhaseIncident, incident_id)
+    if not inc or inc.phase_id != phase_id:
+        raise HTTPException(404, "incident not found")
+    session.delete(inc)
 
 
-@app.get("/issues/{issue_id}", response_model=IssueOut)
-def get_issue(issue_id: uuid.UUID, session: Session = Depends(get_session)) -> IssueOut:
-    issue = session.get(Issue, issue_id)
-    if not issue:
-        raise HTTPException(status_code=404, detail="issue not found")
-    return issue_to_out(issue)
+# ═══════════════════════════════════════════════════════════
+# Team
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/projects/{project_id}/team", response_model=list[ProjectTeamOut])
+def list_team(project_id: uuid.UUID, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    return list(session.exec(
+        select(ProjectTeam).where(ProjectTeam.project_id == project_id)
+    ))
 
 
-@app.patch("/issues/{issue_id}", response_model=IssueOut)
-def update_issue(
-    request: Request,
-    issue_id: uuid.UUID,
-    payload: IssueUpdate,
-    session: Session = Depends(get_session),
-    actor: str = Depends(get_actor),
-) -> IssueOut:
-    issue = session.get(Issue, issue_id)
-    if not issue:
-        raise HTTPException(status_code=404, detail="issue not found")
-
-    before = issue_snapshot(issue)
-    data = payload.model_dump(exclude_unset=True)
-    if "project_id" in data and data.get("project_id") is not None:
-        if issue.project_id and data["project_id"] != issue.project_id:
-            raise HTTPException(status_code=400, detail="project_id is derived from subtask")
-        data.pop("project_id", None)
-    if "subtask_id" in data and data.get("subtask_id") is None:
-        raise HTTPException(status_code=400, detail="subtask_id cannot be null")
-    list_fields = {
-        "category": "category_json",
-        "equipment_type": "equipment_type_json",
-        "related_person": "related_person_json",
-        "tags": "tags_json",
-    }
-    for k, v in data.items():
-        if k in list_fields and v is not None:
-            issue.set_list(list_fields[k], v)
-        else:
-            setattr(issue, k, v)
-    if "subtask_id" in data and data.get("subtask_id") is not None:
-        st = session.get(SubTask, data["subtask_id"])
-        if not st:
-            raise HTTPException(status_code=404, detail="subtask not found")
-        issue.project_id = st.project_id
-    issue.updated_at = utcnow()
-    session.add(issue)
-    record_audit(
-        session=session,
-        issue_id=issue.id,
-        actor=actor,
-        action=AuditAction.update_status if "status" in data else AuditAction.update,
-        from_value=before,
-        to_value=issue_snapshot(issue),
-        comment=None,
-        ip_address=request.client.host if request.client else None,
-    )
-    session.commit()
-    session.refresh(issue)
-    return issue_to_out(issue)
+@app.post("/projects/{project_id}/team", response_model=ProjectTeamOut, status_code=201)
+def add_team_member(project_id: uuid.UUID, body: ProjectTeamCreate, session: Session = Depends(get_session)):
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    tm = ProjectTeam(project_id=project_id, person_name=body.person_name, role=body.role)
+    session.add(tm)
+    session.flush()
+    return _team_to_out(tm)
 
 
-@app.get("/issues/{issue_id}/audit", response_model=list[AuditLogOut])
-def list_issue_audit(issue_id: uuid.UUID, session: Session = Depends(get_session)) -> list[AuditLogOut]:
-    stmt = select(AuditLog).where(AuditLog.issue_id == issue_id).order_by(col(AuditLog.timestamp).desc())
-    logs = session.exec(stmt).all()
-    return [audit_to_out(a) for a in logs]
-
-
-@app.post("/issues/{issue_id}/comments", response_model=CommentOut)
-def add_comment(
-    request: Request,
-    issue_id: uuid.UUID,
-    payload: CommentCreate,
-    session: Session = Depends(get_session),
-    actor: str = Depends(get_actor),
-) -> CommentOut:
-    issue = session.get(Issue, issue_id)
-    if not issue:
-        raise HTTPException(status_code=404, detail="issue not found")
-
-    comment = Comment(issue_id=issue_id, actor=actor, content=payload.content, is_internal=payload.is_internal)
-    issue.updated_at = utcnow()
-    session.add(comment)
-    session.add(issue)
-    record_audit(
-        session=session,
-        issue_id=issue_id,
-        actor=actor,
-        action=AuditAction.add_comment,
-        from_value={},
-        to_value={"comment_id": str(comment.id), "is_internal": comment.is_internal},
-        comment=payload.content,
-        ip_address=request.client.host if request.client else None,
-    )
-    session.commit()
-    session.refresh(comment)
-    return CommentOut(
-        id=comment.id,
-        issue_id=comment.issue_id,
-        actor=comment.actor,
-        content=comment.content,
-        is_internal=comment.is_internal,
-        created_at=comment.created_at,
-    )
-
-
-@app.get("/issues/{issue_id}/comments", response_model=list[CommentOut])
-def list_comments(issue_id: uuid.UUID, session: Session = Depends(get_session)) -> list[CommentOut]:
-    stmt = select(Comment).where(Comment.issue_id == issue_id).order_by(col(Comment.created_at).desc())
-    comments = session.exec(stmt).all()
-    return [
-        CommentOut(
-            id=c.id,
-            issue_id=c.issue_id,
-            actor=c.actor,
-            content=c.content,
-            is_internal=c.is_internal,
-            created_at=c.created_at,
-        )
-        for c in comments
-    ]
-
-
-@app.post("/issues/{issue_id}/attachments", response_model=AttachmentOut)
-def upload_attachment(
-    request: Request,
-    issue_id: uuid.UUID,
-    file: UploadFile = File(...),
-    session: Session = Depends(get_session),
-    actor: str = Depends(get_actor),
-) -> AttachmentOut:
-    issue = session.get(Issue, issue_id)
-    if not issue:
-        raise HTTPException(status_code=404, detail="issue not found")
-
-    att_id = uuid.uuid4()
-    safe_name = Path(file.filename or "file").name
-    stored = UPLOAD_DIR / f"{att_id}_{safe_name}"
-    content = file.file.read()
-    stored.write_bytes(content)
-
-    att = Attachment(
-        id=att_id,
-        issue_id=issue_id,
-        comment_id=None,
-        uploader=actor,
-        filename=safe_name,
-        content_type=file.content_type,
-        size=len(content),
-        storage_path=str(stored),
-    )
-    issue.updated_at = utcnow()
-    session.add(att)
-    session.add(issue)
-    record_audit(
-        session=session,
-        issue_id=issue_id,
-        actor=actor,
-        action=AuditAction.add_attachment,
-        from_value={},
-        to_value={"attachment_id": str(att.id), "filename": att.filename},
-        comment=None,
-        ip_address=request.client.host if request.client else None,
-    )
-    session.commit()
-    session.refresh(att)
-    return attachment_to_out(att, request)
-
-
-@app.get("/issues/{issue_id}/attachments", response_model=list[AttachmentOut])
-def list_attachments(request: Request, issue_id: uuid.UUID, session: Session = Depends(get_session)) -> list[AttachmentOut]:
-    stmt = select(Attachment).where(Attachment.issue_id == issue_id).order_by(col(Attachment.created_at).desc())
-    atts = session.exec(stmt).all()
-    return [attachment_to_out(a, request) for a in atts]
-
-
-@app.get("/attachments/{attachment_id}/download", name="download_attachment")
-def download_attachment(attachment_id: uuid.UUID, session: Session = Depends(get_session)) -> FileResponse:
-    att = session.get(Attachment, attachment_id)
-    if not att:
-        raise HTTPException(status_code=404, detail="attachment not found")
-    p = Path(att.storage_path)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="file missing on disk")
-    return FileResponse(path=str(p), filename=att.filename, media_type=att.content_type)
+@app.delete("/projects/{project_id}/team/{team_id}", status_code=204)
+def remove_team_member(project_id: uuid.UUID, team_id: uuid.UUID, session: Session = Depends(get_session)):
+    tm = session.get(ProjectTeam, team_id)
+    if not tm or tm.project_id != project_id:
+        raise HTTPException(404, "team member not found")
+    session.delete(tm)
