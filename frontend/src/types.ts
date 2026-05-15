@@ -18,7 +18,7 @@ export type Project = {
   is_abnormal: boolean
 
   phases: ProjectPhase[]
-  team: ProjectTeamMember[]
+  assignments: ProjectAssignment[]
 
   created_at: string
   updated_at: string
@@ -29,7 +29,9 @@ export type ProjectPhase = {
   project_id: string
   seq: number
   phase_name: string
+  sub_name: string
   responsible: string
+  status: string
 
   start_date: string | null
   warning_date: string | null
@@ -52,11 +54,28 @@ export type PhaseIncident = {
   created_at: string
 }
 
-export type ProjectTeamMember = {
+export type Person = {
+  id: string
+  name: string
+  department: string
+  is_active: boolean
+  roles: string[]
+  created_at: string
+}
+
+export type RoleDefinition = {
+  code: string
+  name: string
+  category: string
+  assigns_json: string | null
+}
+
+export type ProjectAssignment = {
   id: string
   project_id: string
   person_name: string
-  role: string
+  role_code: string
+  phase_id: string | null
   created_at: string
 }
 
@@ -83,4 +102,10 @@ export type PhaseTemplateItem = {
   seq: number
   phase_name: string
   description: string | null
+  sub_statuses_json: string
+}
+
+export type LoginResponse = {
+  person: Person
+  token: string
 }

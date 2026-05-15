@@ -20,9 +20,9 @@ from backend.app.db import init_db, session_scope, engine, PRODUCTION_TEMPLATE_I
 from backend.app.models import (
     Customer,
     Project,
+    ProjectAssignment,
     ProjectPhase,
     PhaseIncident,
-    ProjectTeam,
     PhaseTemplate,
 )
 
@@ -121,6 +121,7 @@ def import_excel(file_path: str) -> dict:
                     project_id=project.id,
                     seq=op.seq,
                     phase_name=op.phase,
+                    sub_name="",
                     responsible=op.responsible,
                     start_date=op.start_date,
                     warning_date=op.warning_date,
@@ -145,14 +146,27 @@ def import_excel(file_path: str) -> dict:
                     session.add(pi)
                     stats["incidents"] += 1
 
-            # Team
+            # Assignments (从 team 数据推断角色)
             for tm in wo.team:
-                pt = ProjectTeam(
+                # 将旧的 role 映射为 role_code
+                role_map = {
+                    "销售": "sales_assistant",
+                    "项目经理": "project_manager",
+                    "设计": "mechanical_designer",
+                    "生产": "production_executor",
+                    "调机": "tuning_executor",
+                    "验收": "after_sales_super",
+                    "收款": "sales_assistant",
+                    "代理商": "sales_assistant",
+                }
+                role_code = role_map.get(tm.role, "project_manager")
+                pa = ProjectAssignment(
                     project_id=project.id,
                     person_name=tm.name,
-                    role=tm.role,
+                    role_code=role_code,
+                    phase_id=None,
                 )
-                session.add(pt)
+                session.add(pa)
                 stats["team"] += 1
 
     return stats

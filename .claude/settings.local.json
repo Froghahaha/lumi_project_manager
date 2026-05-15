@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(python *)",
+      "Bash(conda env *)",
+      "Bash(conda run *)",
+      "Bash(curl -s http://localhost:8000/roles)",
+      "Bash(npx tsc *)",
+      "Bash(start /B conda run -n LumiGrasp uvicorn backend.app.main:app --host 0.0.0.0 --port 8000)",
+      "Bash(curl -s http://localhost:8000/templates)",
+      "Bash(curl -s http://localhost:8000/projects)"
+    ]
+  },
+  "skipDangerousModePermissionPrompt": true
+}

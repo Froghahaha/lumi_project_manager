@@ -151,7 +151,7 @@ export function ProjectsPage() {
                           color={overdue ? 'red' : ph.actual_end_date ? 'green' : 'default'}
                           style={{ fontSize: 10, padding: '0 4px', lineHeight: '18px' }}
                         >
-                          {ph.phase_name}
+                          {ph.sub_name || ph.phase_name}
                         </Tag>
                       )
                     })}

@@ -35,6 +35,7 @@ class PhaseTemplateItem(SQLModel, table=True):
     seq: int
     phase_name: str
     description: str | None = None
+    sub_statuses_json: str = ""
 
 
 class Project(SQLModel, table=True):
@@ -66,7 +67,9 @@ class ProjectPhase(SQLModel, table=True):
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
     seq: int
     phase_name: str
+    sub_name: str = ""
     responsible: str = ""
+    status: str = ""
 
     start_date: date | None = None
     warning_date: date | None = None
@@ -89,10 +92,36 @@ class PhaseIncident(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
-class ProjectTeam(SQLModel, table=True):
-    __tablename__ = "project_team"
+class RoleDefinition(SQLModel, table=True):
+    __tablename__ = "role_definition"
+    code: str = Field(primary_key=True)
+    name: str
+    category: str
+    assigns_json: str | None = None
+
+
+class ProjectAssignment(SQLModel, table=True):
+    __tablename__ = "project_assignment"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
     person_name: str
-    role: str
+    role_code: str = Field(foreign_key="role_definition.code")
+    phase_id: uuid.UUID | None = Field(default=None, foreign_key="project_phase.id")
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class Person(SQLModel, table=True):
+    __tablename__ = "person"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    department: str = ""
+    password_hash: str = ""
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class PersonRole(SQLModel, table=True):
+    __tablename__ = "person_role"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    person_id: uuid.UUID = Field(foreign_key="person.id", index=True)
+    role_code: str = Field(foreign_key="role_definition.code")

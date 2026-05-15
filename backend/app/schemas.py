@@ -31,6 +31,7 @@ class PhaseTemplateItemCreate(BaseModel):
     seq: int
     phase_name: str
     description: str | None = None
+    sub_statuses_json: str = ""
 
 
 class PhaseTemplateCreate(BaseModel):
@@ -45,6 +46,7 @@ class PhaseTemplateItemOut(BaseModel):
     seq: int
     phase_name: str
     description: str | None = None
+    sub_statuses_json: str = ""
 
 
 class PhaseTemplateOut(BaseModel):
@@ -82,7 +84,9 @@ class PhaseIncidentOut(BaseModel):
 class ProjectPhaseCreate(BaseModel):
     seq: int
     phase_name: str
+    sub_name: str = ""
     responsible: str = ""
+    status: str = ""
     start_date: date | None = None
     warning_date: date | None = None
     planned_end_date: date | None = None
@@ -97,7 +101,9 @@ class ProjectPhaseOut(BaseModel):
     project_id: uuid.UUID
     seq: int
     phase_name: str
+    sub_name: str = ""
     responsible: str
+    status: str = ""
 
     start_date: date | None = None
     warning_date: date | None = None
@@ -113,19 +119,79 @@ class ProjectPhaseOut(BaseModel):
 
 
 # ============================================================
-# ProjectTeam
+# PhaseStatusUpdate
 # ============================================================
 
-class ProjectTeamCreate(BaseModel):
+class PhaseStatusUpdate(BaseModel):
+    status: str
+
+
+# ============================================================
+# Person
+# ============================================================
+
+class PersonCreate(BaseModel):
+    name: str
+    department: str = ""
+    roles: list[str] = Field(default_factory=list)  # role_codes
+
+
+class PersonRoleOut(BaseModel):
+    id: uuid.UUID
+    person_id: uuid.UUID
+    role_code: str
+
+
+class PersonOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    department: str
+    is_active: bool
+    roles: list[str] = Field(default_factory=list)  # role_codes
+    created_at: datetime
+
+
+# ============================================================
+# Auth / Login
+# ============================================================
+
+class LoginRequest(BaseModel):
     person_name: str
-    role: str
+    password: str
 
 
-class ProjectTeamOut(BaseModel):
+class LoginResponse(BaseModel):
+    person: PersonOut
+    token: str
+
+
+# ============================================================
+# RoleDefinition
+# ============================================================
+
+class RoleDefinitionOut(BaseModel):
+    code: str
+    name: str
+    category: str
+    assigns_json: str | None = None
+
+
+# ============================================================
+# ProjectAssignment
+# ============================================================
+
+class ProjectAssignmentCreate(BaseModel):
+    person_name: str
+    role_code: str
+    phase_id: str | None = None
+
+
+class ProjectAssignmentOut(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
     person_name: str
-    role: str
+    role_code: str
+    phase_id: str | None = None
     created_at: datetime
 
 
@@ -152,7 +218,7 @@ class ProjectCreate(BaseModel):
     is_abnormal: bool = False
 
     phases: list[ProjectPhaseCreate] = Field(default_factory=list)
-    team: list[ProjectTeamCreate] = Field(default_factory=list)
+    assignments: list[ProjectAssignmentCreate] = Field(default_factory=list)
 
 
 class ProjectUpdate(BaseModel):
@@ -181,7 +247,7 @@ class ProjectOut(BaseModel):
     is_abnormal: bool = False
 
     phases: list[ProjectPhaseOut] = Field(default_factory=list)
-    team: list[ProjectTeamOut] = Field(default_factory=list)
+    assignments: list[ProjectAssignmentOut] = Field(default_factory=list)
 
     created_at: datetime
     updated_at: datetime
