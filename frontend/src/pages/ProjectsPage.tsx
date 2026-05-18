@@ -15,10 +15,10 @@ import {
 } from 'antd'
 import { Link, useLoaderData, useRevalidator } from 'react-router-dom'
 import { createProject, listTemplates } from '../api'
+import { fmtShortDate } from '../utils/format'
+import { EQUIP_CATEGORIES } from '../constants'
 import type { Project, PhaseTemplate } from '../types'
 import { useEffect } from 'react'
-
-const EQUIP_CATEGORIES = ['关节', '桁架', '视觉桁架', '联线', '其他']
 
 export function ProjectsPage() {
   const { projects } = useLoaderData() as { projects: Project[] }
@@ -64,11 +64,6 @@ export function ProjectsPage() {
       setError(e instanceof Error ? e.message : String(e))
     }
     setLoading(false)
-  }
-
-  function fmtDate(d: string | null) {
-    if (!d) return '-'
-    return d.slice(5)
   }
 
   return (
@@ -134,7 +129,7 @@ export function ProjectsPage() {
               {
                 title: '交期',
                 key: 'delivery',
-                render: (_, p) => fmtDate(p.contract_expected_delivery_date),
+                render: (_, p) => fmtShortDate(p.contract_expected_delivery_date),
               },
               {
                 title: '工序',

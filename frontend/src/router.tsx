@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, redirect } from 'react-router-dom'
+import { createBrowserRouter, redirect } from 'react-router-dom'
 import { getProject, listProjects } from './api'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/DashboardPage'
@@ -50,6 +50,11 @@ export const router = createBrowserRouter([
       },
       {
         path: '/dashboard',
+        loader: async () => {
+          requireAuth()
+          const projects = await listProjects()
+          return { projects }
+        },
         element: <DashboardPage />,
       },
       {

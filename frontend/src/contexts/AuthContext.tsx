@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { LoginResponse, Person } from '../types'
+import { loadRoles, getRoleName } from '../utils/roles'
 
 export type AuthState = {
   person: Person | null
@@ -55,25 +56,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isLoggedIn = !!person && !!token
 
+  useEffect(() => { loadRoles() }, [])
+
   const login = useCallback((res: LoginResponse) => {
     setPerson(res.person)
     setToken(res.token)
-    // Auto-select first role if available
     const firstRole = res.person.roles[0] || ''
     setRoleRaw(firstRole)
-    const roleMap: Record<string, string> = {
-      admin: '超级管理员',
-      tech_supervisor: '技术主管',
-      after_sales_super: '售后主管',
-      project_manager: '项目经理',
-      sales_assistant: '销售助理',
-      mechanical_designer: '机械设计执行人',
-      software_designer: '软件设计执行人',
-      production_executor: '生产执行人',
-      tuning_executor: '安调执行人',
-    }
-    setRoleName(roleMap[firstRole] || firstRole)
-    saveAuth(res.person, res.token, firstRole, roleMap[firstRole] || firstRole)
+    const name = getRoleName(firstRole)
+    setRoleName(name)
+    saveAuth(res.person, res.token, firstRole, name)
   }, [])
 
   const logout = useCallback(() => {

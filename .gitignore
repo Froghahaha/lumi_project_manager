@@ -1,4 +1,9 @@
 backend/__pycache__/*
+backend/tests/__pycache__/*
 frontend/node_modules/*
 uploads/*
 backend/app/__pycache__/*
+*.xlsx
+data.db
+.vite/
+__pycache__/

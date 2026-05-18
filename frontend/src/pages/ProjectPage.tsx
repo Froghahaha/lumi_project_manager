@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Button,
   Card,
-  Descriptions,
+  Divider,
   Form,
   Input,
   InputNumber,
@@ -14,7 +14,16 @@ import {
   Typography,
   message,
   Popconfirm,
+  Upload,
+  Row,
+  Col,
 } from 'antd'
+import {
+  TeamOutlined,
+  FileTextOutlined,
+  DeleteOutlined,
+  WarningOutlined,
+} from '@ant-design/icons'
 import { useLoaderData, useParams, useRevalidator } from 'react-router-dom'
 import {
   addAssignment,
@@ -22,33 +31,16 @@ import {
   addPhase,
   deletePhase,
   deleteProject,
+  getAgreementUrl,
   listRoles,
   removeAssignment,
   updateProject,
+  uploadAgreement,
 } from '../api'
+import { fmtDate, phaseOverdue } from '../utils/format'
+import { INCIDENT_COLORS } from '../constants'
+import { getRoleName } from '../utils/roles'
 import type { Project, ProjectPhase, RoleDefinition } from '../types'
-
-function phaseOverdue(ph: ProjectPhase): boolean {
-  if (!ph.planned_end_date) return false
-  const end = ph.actual_end_date ? new Date(ph.actual_end_date) : new Date()
-  return end > new Date(ph.planned_end_date)
-}
-
-function fmtDate(d: string | null): string {
-  if (!d) return '-'
-  return d.slice(0, 10)
-}
-
-function defaultStatuses(phaseName: string): string[] {
-  switch (phaseName) {
-    case '机械设计': return ['未开始', '设计中', '图纸已下发']
-    case '生产': return ['未开始', '生产中', '生产完成', '已发货']
-    case '调机': return ['未开始', '安调中', '安调完成']
-    case '验收': return ['未开始', '已验收']
-    case '尾款': return []
-    default: return ['未开始', '进行中', '已完成']
-  }
-}
 
 export function ProjectPage() {
   const { project } = useLoaderData() as { project: Project }
@@ -62,8 +54,8 @@ export function ProjectPage() {
   const [phaseForm] = Form.useForm()
   const [assignModal, setAssignModal] = useState(false)
   const [assignForm] = Form.useForm()
-
-  const roleMap = Object.fromEntries(roles.map((r) => [r.code, r.name]))
+  const [editModal, setEditModal] = useState(false)
+  const [editForm] = Form.useForm()
 
   useEffect(() => {
     listRoles().then(setRoles).catch(() => {})
@@ -124,43 +116,205 @@ export function ProjectPage() {
     window.location.href = '/'
   }
 
+  async function onEditProject(values: {
+    equipment_category?: string
+    equipment_spec?: string
+    equipment_quantity?: number
+    end_customer?: string
+    contract_start_date?: string
+    contract_duration_days?: number | null
+    contract_expected_delivery_date?: string
+  }) {
+    if (!projectId) return
+    await updateProject(projectId, values)
+    setEditModal(false)
+    revalidator.revalidate()
+    message.success('项目信息已更新')
+  }
+
   const sortedPhases = [...project.phases].sort((a, b) => a.seq - b.seq)
+
+  // group assignments by role for team display
+  const teamByRole = new Map<string, typeof project.assignments>()
+  for (const a of project.assignments) {
+    const key = a.role_code
+    if (!teamByRole.has(key)) teamByRole.set(key, [])
+    teamByRole.get(key)!.push(a)
+  }
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {project.order_no}
-          {project.end_customer && (
-            <Typography.Text type="secondary" style={{ fontSize: 14, marginLeft: 8 }}>
-              终端: {project.end_customer}
-            </Typography.Text>
-          )}
-        </Typography.Title>
-        <Popconfirm title="确认删除?" onConfirm={onDelete}>
-          <Button danger size="small">删除</Button>
-        </Popconfirm>
-      </Space>
+      {/* ─── Unified Header Card ─────────────────────────── */}
+      <Card
+        style={{ borderRadius: 8, overflow: 'hidden' }}
+        styles={{ body: { padding: 0 } }}
+      >
+        {/* Top bar */}
+        <div style={{ background: 'linear-gradient(135deg, #001529 0%, #003a70 100%)', padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Space size={12}>
+            <Typography.Title level={4} style={{ margin: 0, color: '#fff' }}>
+              {project.order_no}
+            </Typography.Title>
+            {project.end_customer && (
+              <Tag color="geekblue" style={{ margin: 0 }}>{project.end_customer}</Tag>
+            )}
+            {project.is_abnormal && (
+              <Tag color="error" icon={<WarningOutlined />}>异常</Tag>
+            )}
+          </Space>
+          <Space size={8}>
+            <Button size="small" onClick={() => {
+              editForm.setFieldsValue({
+                equipment_category: project.equipment_category,
+                equipment_spec: project.equipment_spec,
+                equipment_quantity: project.equipment_quantity,
+                end_customer: project.end_customer,
+                contract_start_date: project.contract_start_date,
+                contract_duration_days: project.contract_duration_days,
+                contract_expected_delivery_date: project.contract_expected_delivery_date,
+              })
+              setEditModal(true)
+            }}>编辑</Button>
+            <Button size="small" icon={<TeamOutlined />} type="primary" ghost onClick={() => setAssignModal(true)}>
+              添加成员
+            </Button>
+            <Popconfirm title="确认删除此项目?" onConfirm={onDelete}>
+              <Button size="small" danger icon={<DeleteOutlined />} ghost>删除</Button>
+            </Popconfirm>
+          </Space>
+        </div>
 
-      <Card size="small">
-        <Descriptions column={6} size="small">
-          <Descriptions.Item label="设备">{project.equipment_spec || '-'}</Descriptions.Item>
-          <Descriptions.Item label="类型"><Tag>{project.equipment_category || '-'}</Tag></Descriptions.Item>
-          <Descriptions.Item label="数量">{project.equipment_quantity}</Descriptions.Item>
-          <Descriptions.Item label="异常标记">
-            <Select value={project.is_abnormal} onChange={onToggleAbnormal} size="small" style={{ width: 80 }}
-              options={[{ label: '正常', value: false }, { label: '异常', value: true }]} />
-          </Descriptions.Item>
-          <Descriptions.Item label="收款进度">
-            <InputNumber size="small" min={0} max={1} step={0.1} value={project.contract_payment_progress}
-              onChange={onUpdatePayment} style={{ width: 80 }} />
-          </Descriptions.Item>
-          <Descriptions.Item label="立项">{fmtDate(project.contract_start_date)}</Descriptions.Item>
-          <Descriptions.Item label="合同天数">{project.contract_duration_days ?? '-'}天</Descriptions.Item>
-          <Descriptions.Item label="预计交期">{fmtDate(project.contract_expected_delivery_date)}</Descriptions.Item>
-        </Descriptions>
+        {/* Body: two-column layout */}
+        <div style={{ padding: '16px 20px' }}>
+          <Row gutter={32}>
+            {/* Left — Project Info */}
+            <Col xs={24} md={14}>
+              <Row gutter={[12, 8]}>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>设备</Typography.Text>
+                  <div style={{ fontWeight: 500 }}>{project.equipment_spec || '-'}</div>
+                </Col>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>类型</Typography.Text>
+                  <div><Tag style={{ margin: 0 }}>{project.equipment_category || '-'}</Tag></div>
+                </Col>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>数量</Typography.Text>
+                  <div style={{ fontWeight: 500 }}>{project.equipment_quantity}</div>
+                </Col>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>立项</Typography.Text>
+                  <div style={{ fontWeight: 500 }}>{fmtDate(project.contract_start_date)}</div>
+                </Col>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>合同天数</Typography.Text>
+                  <div style={{ fontWeight: 500 }}>{project.contract_duration_days ?? '-'} 天</div>
+                </Col>
+                <Col span={8}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>预计交期</Typography.Text>
+                  <div style={{ fontWeight: 600, color: project.contract_expected_delivery_date && new Date() > new Date(project.contract_expected_delivery_date) ? '#cf1322' : undefined }}>
+                    {fmtDate(project.contract_expected_delivery_date)}
+                  </div>
+                </Col>
+              </Row>
+
+              <Divider style={{ margin: '12px 0' }} />
+
+              {/* Quick controls row */}
+              <Row gutter={[16, 8]} align="middle">
+                <Col>
+                  <Space size={4}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>异常标记</Typography.Text>
+                    <Select value={project.is_abnormal} onChange={onToggleAbnormal} size="small" style={{ width: 76 }}
+                      options={[{ label: '正常', value: false }, { label: '异常', value: true }]} />
+                  </Space>
+                </Col>
+                <Col>
+                  <Space size={4}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>收款进度</Typography.Text>
+                    <InputNumber size="small" min={0} max={1} step={0.1} value={project.contract_payment_progress}
+                      onChange={onUpdatePayment} style={{ width: 72 }} />
+                  </Space>
+                </Col>
+                <Col flex="auto" />
+                <Col>
+                  <Space size={4}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>技术协议</Typography.Text>
+                    {project.agreement_filename ? (
+                      <>
+                        <a href={getAgreementUrl(project.id)} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+                          <FileTextOutlined /> {project.agreement_filename}
+                        </a>
+                        <Upload
+                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                          showUploadList={false}
+                          beforeUpload={(file) => {
+                            uploadAgreement(project.id, file)
+                              .then(() => { message.success('上传成功'); revalidator.revalidate() })
+                              .catch((e) => message.error(e instanceof Error ? e.message : String(e)))
+                            return false
+                          }}
+                        >
+                          <Button size="small" type="link" style={{ padding: 0, fontSize: 12 }}>替换</Button>
+                        </Upload>
+                      </>
+                    ) : (
+                      <Upload
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        showUploadList={false}
+                        beforeUpload={(file) => {
+                          uploadAgreement(project.id, file)
+                            .then(() => { message.success('上传成功'); revalidator.revalidate() })
+                            .catch((e) => message.error(e instanceof Error ? e.message : String(e)))
+                          return false
+                        }}
+                      >
+                        <Button size="small" icon={<FileTextOutlined />}>上传协议</Button>
+                      </Upload>
+                    )}
+                  </Space>
+                </Col>
+              </Row>
+            </Col>
+
+            {/* Right — Team */}
+            <Col xs={24} md={10}>
+              <div style={{ background: '#fafafa', borderRadius: 6, padding: '12px 16px', minHeight: '100%' }}>
+                <Space style={{ marginBottom: 8 }}>
+                  <TeamOutlined style={{ color: '#1677ff' }} />
+                  <Typography.Text strong style={{ fontSize: 13 }}>项目团队</Typography.Text>
+                </Space>
+                {teamByRole.size === 0 ? (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>暂无团队成员</Typography.Text>
+                ) : (
+                  <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                    {Array.from(teamByRole.entries()).map(([roleCode, as]) => (
+                      <div key={roleCode} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                        <Typography.Text style={{ fontSize: 12, color: '#666', whiteSpace: 'nowrap', minWidth: 70, marginTop: 2 }}>
+                          {getRoleName(roleCode)}:
+                        </Typography.Text>
+                        <Space wrap size={[4, 2]}>
+                          {as.map((a) => (
+                            <Tag key={a.id} closable onClose={() => onRemoveAssign(a.id)} style={{ fontSize: 11, margin: 0 }}>
+                              {a.person_name}
+                              {a.phase_id != null && (() => {
+                                const ph = project.phases.find((p) => p.id === a.phase_id)
+                                return ph ? ` · ${ph.sub_name || ph.phase_name}` : ''
+                              })()}
+                            </Tag>
+                          ))}
+                        </Space>
+                      </div>
+                    ))}
+                  </Space>
+                )}
+              </div>
+            </Col>
+          </Row>
+        </div>
       </Card>
 
+      {/* ─── Phases Card ─────────────────────────────────── */}
       <Card size="small" title="工序" extra={<Button size="small" onClick={() => setPhaseModal(true)}>+ 工序</Button>}>
         {sortedPhases.map((ph) => {
           const overdue = phaseOverdue(ph)
@@ -192,15 +346,13 @@ export function ProjectPage() {
                 </Space>
               }
             >
-              {/* Incidents table */}
               <Table<Project['phases'][0]['incidents'][0]>
                 rowKey="id" dataSource={ph.incidents} size="small" pagination={false}
                 locale={{ emptyText: '无事故事件' }}
                 columns={[
                   { title: '日期', dataIndex: 'occurred_at', width: 100, render: (v: string) => (v ? v.slice(0, 10) : '-') },
                   { title: '类别', dataIndex: 'category', width: 80, render: (v: string) => {
-                    const colors: Record<string, string> = { 原因: 'red', 现状: 'blue', 应急: 'orange', 长效: 'green' }
-                    return v ? <Tag color={colors[v] || 'default'}>{v}</Tag> : null
+                    return v ? <Tag color={INCIDENT_COLORS[v] || 'default'}>{v}</Tag> : null
                   }},
                   { title: '描述', dataIndex: 'description' },
                 ]}
@@ -211,39 +363,6 @@ export function ProjectPage() {
             </Card>
           )
         })}
-      </Card>
-
-      <Card size="small" title="团队" extra={<Button size="small" onClick={() => setAssignModal(true)}>+ 成员</Button>}>
-        {project.assignments.length === 0 ? (
-          <Typography.Text type="secondary">暂无团队成员</Typography.Text>
-        ) : (
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            {(() => {
-              const grouped = new Map<string, typeof project.assignments>()
-              for (const a of project.assignments) {
-                const key = a.role_code
-                if (!grouped.has(key)) grouped.set(key, [])
-                grouped.get(key)!.push(a)
-              }
-              return Array.from(grouped.entries()).map(([roleCode, as]) => (
-                <div key={roleCode}>
-                  <Typography.Text strong style={{ fontSize: 13 }}>{roleMap[roleCode] || roleCode}:</Typography.Text>
-                  <Space wrap style={{ marginLeft: 8 }}>
-                    {as.map((a) => (
-                      <Tag key={a.id} closable onClose={() => onRemoveAssign(a.id)}>
-                        {a.person_name}
-                        {a.phase_id != null ? ` → ${(() => {
-                          const ph = project.phases.find((p) => p.id === a.phase_id)
-                          return ph ? (ph.sub_name || ph.phase_name) : ''
-                        })()}` : ''}
-                      </Tag>
-                    ))}
-                  </Space>
-                </div>
-              ))
-            })()}
-          </Space>
-        )}
       </Card>
 
       {/* Incident Modal */}
@@ -283,6 +402,33 @@ export function ProjectPage() {
           <Form.Item name="seq" hidden><InputNumber /></Form.Item>
           <Form.Item name="responsible" label="责任人">
             <Input placeholder="王文哲" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit Project Modal */}
+      <Modal open={editModal} title="编辑项目信息" onCancel={() => setEditModal(false)} onOk={() => editForm.submit()}>
+        <Form form={editForm} layout="vertical" onFinish={onEditProject}>
+          <Form.Item name="equipment_category" label="类型">
+            <Input />
+          </Form.Item>
+          <Form.Item name="equipment_spec" label="设备">
+            <Input />
+          </Form.Item>
+          <Form.Item name="equipment_quantity" label="数量">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="end_customer" label="终端客户">
+            <Input />
+          </Form.Item>
+          <Form.Item name="contract_start_date" label="立项日期">
+            <Input placeholder="2026-05-01" />
+          </Form.Item>
+          <Form.Item name="contract_duration_days" label="合同天数">
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="contract_expected_delivery_date" label="预计交期">
+            <Input placeholder="2026-05-01" />
           </Form.Item>
         </Form>
       </Modal>

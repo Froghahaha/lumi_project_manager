@@ -1,18 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Select, Typography, message } from 'antd'
 import { updatePhaseStatus } from '../api'
+import { defaultStatuses } from '../utils/format'
 import type { ProjectPhase } from '../types'
-
-function defaultStatuses(phaseName: string): string[] {
-  switch (phaseName) {
-    case '机械设计': return ['未开始', '设计中', '图纸已下发']
-    case '生产': return ['未开始', '生产中', '生产完成', '已发货']
-    case '调机': return ['未开始', '安调中', '安调完成']
-    case '验收': return ['未开始', '已验收']
-    case '尾款': return []
-    default: return ['未开始', '进行中', '已完成']
-  }
-}
 
 export function PhaseStatusSelect({ phase, size = 'small' }: {
   phase: ProjectPhase

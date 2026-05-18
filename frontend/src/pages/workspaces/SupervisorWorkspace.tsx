@@ -26,6 +26,7 @@ import {
   removeAssignment,
   updatePhase,
 } from '../../api'
+import { ROLE_PHASE_SEQ } from '../../constants'
 import type { Person, Project, ProjectAssignment, ProjectPhase, RoleDefinition } from '../../types'
 
 export function SupervisorWorkspace() {
@@ -80,12 +81,6 @@ export function SupervisorWorkspace() {
     } catch { return [] }
   })()
 
-  // 角色→工序seq的映射
-  const ROLE_PHASE_SEQ: Record<string, number | null> = {
-    mechanical_designer: 1, production_executor: 2, tuning_executor: 3,
-    after_sales_super: null,  // 验收/售后是全局角色
-    project_manager: null, software_designer: null, sales_assistant: null,
-  }
   // 分两组：工序绑定角色 / 项目全局角色
   const phaseRoles = assignableRoles.filter((r) => ROLE_PHASE_SEQ[r.code] != null)
   const globalRoles = assignableRoles.filter((r) => ROLE_PHASE_SEQ[r.code] == null)

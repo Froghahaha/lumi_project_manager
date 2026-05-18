@@ -16,13 +16,13 @@ function getAuthHeaders() {
     const raw = localStorage.getItem('lumi_auth')
     if (raw) {
       const data = JSON.parse(raw)
-      return {
-        'X-User': encodeURIComponent(data.person?.name || ''),
-        'X-User-Role': data.role || '',
+      const token = data.token || ''
+      if (token) {
+        return { 'Authorization': `Bearer ${token}` }
       }
     }
   } catch { /* ignore */ }
-  return { 'X-User': '', 'X-User-Role': '' }
+  return {}
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -38,7 +38,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const text = await res.text()
     throw new Error(text || `HTTP ${res.status}`)
   }
-  return (await res.json()) as T
+  const text = await res.text()
+  if (!text) return undefined as T
+  return JSON.parse(text) as T
 }
 
 export async function listProjects(params?: {
@@ -90,18 +92,22 @@ export async function updateProject(
   id: string,
   patch: {
     is_abnormal?: boolean
+    equipment_category?: string | null
+    equipment_quantity?: number
+    equipment_spec?: string | null
+    end_customer?: string | null
+    contract_start_date?: string | null
+    contract_duration_days?: number | null
+    contract_expected_delivery_date?: string | null
+    contract_actual_delivery_days?: number | null
     contract_payment_progress?: number
-    contract_actual_delivery_days?: number
   },
 ): Promise<Project> {
   return request<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
 }
 
 export async function deleteProject(id: string): Promise<void> {
-  await fetch(`${API_BASE}/projects/${id}`, {
-    method: 'DELETE',
-    headers: { 'X-User': 'demo' },
-  })
+  await request<void>(`/projects/${id}`, { method: 'DELETE' })
 }
 
 export async function listPhases(projectId: string): Promise<ProjectPhase[]> {
@@ -146,19 +152,15 @@ export async function updatePhase(
 }
 
 export async function deletePhase(projectId: string, phaseId: string): Promise<void> {
-  await fetch(`${API_BASE}/projects/${projectId}/phases/${phaseId}`, {
-    method: 'DELETE',
-    headers: { 'X-User': 'demo' },
-  })
+  await request<void>(`/projects/${projectId}/phases/${phaseId}`, { method: 'DELETE' })
 }
 
 export async function addIncident(
   phaseId: string,
   input: { occurred_at: string; category: string; description: string },
 ): Promise<void> {
-  await fetch(`${API_BASE}/phases/${phaseId}/incidents`, {
+  await request<void>(`/phases/${phaseId}/incidents`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-User': 'demo' },
     body: JSON.stringify(input),
   })
 }
@@ -182,10 +184,7 @@ export async function addAssignment(
 }
 
 export async function removeAssignment(projectId: string, assignmentId: string): Promise<void> {
-  await fetch(`${API_BASE}/projects/${projectId}/assignments/${assignmentId}`, {
-    method: 'DELETE',
-    headers: { 'X-User': 'demo' },
-  })
+  await request<void>(`/projects/${projectId}/assignments/${assignmentId}`, { method: 'DELETE' })
 }
 
 export async function listCustomers(): Promise<Customer[]> {
@@ -242,6 +241,25 @@ export async function createPerson(input: { name: string; department?: string; r
 
 export async function updatePerson(id: string, input: { name?: string; department?: string; roles: string[] }): Promise<Person> {
   return request<Person>(`/persons/${id}`, { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+export async function uploadAgreement(projectId: string, file: File): Promise<{ filename: string; size: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/projects/${projectId}/agreement`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export function getAgreementUrl(projectId: string): string {
+  return `${API_BASE}/projects/${projectId}/agreement`
 }
 
 export async function login(person_name: string, password: string): Promise<LoginResponse> {

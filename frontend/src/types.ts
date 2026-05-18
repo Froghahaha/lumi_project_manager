@@ -17,6 +17,8 @@ export type Project = {
 
   is_abnormal: boolean
 
+  agreement_filename: string
+
   phases: ProjectPhase[]
   assignments: ProjectAssignment[]
 
@@ -67,6 +69,7 @@ export type RoleDefinition = {
   code: string
   name: string
   category: string
+  workspace_key: string
   assigns_json: string | null
 }
 

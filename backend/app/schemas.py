@@ -173,6 +173,7 @@ class RoleDefinitionOut(BaseModel):
     code: str
     name: str
     category: str
+    workspace_key: str = ""
     assigns_json: str | None = None
 
 
@@ -223,8 +224,15 @@ class ProjectCreate(BaseModel):
 
 class ProjectUpdate(BaseModel):
     is_abnormal: bool | None = None
-    contract_payment_progress: float | None = None
+    equipment_category: str | None = None
+    equipment_quantity: int | None = None
+    equipment_spec: str | None = None
+    end_customer: str | None = None
+    contract_start_date: date | None = None
+    contract_duration_days: int | None = None
+    contract_expected_delivery_date: date | None = None
     contract_actual_delivery_days: int | None = None
+    contract_payment_progress: float | None = None
 
 
 class ProjectOut(BaseModel):
@@ -245,6 +253,8 @@ class ProjectOut(BaseModel):
     contract_payment_progress: float | None = None
 
     is_abnormal: bool = False
+
+    agreement_filename: str = ""
 
     phases: list[ProjectPhaseOut] = Field(default_factory=list)
     assignments: list[ProjectAssignmentOut] = Field(default_factory=list)

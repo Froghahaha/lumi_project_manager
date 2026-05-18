@@ -1,5 +1,7 @@
-import { Card, Typography } from 'antd'
+import { useEffect, useState } from 'react'
+import { Card, Spin, Typography } from 'antd'
 import { useAuth } from '../../contexts/AuthContext'
+import { loadRoles, getWorkspaceKey } from '../../utils/roles'
 import { ExecutionWorkspace } from './ExecutionWorkspace'
 import { SupervisorWorkspace } from './SupervisorWorkspace'
 import { AfterSalesWorkspace } from './AfterSalesWorkspace'
@@ -8,20 +10,23 @@ import { SoftwareWorkspace } from './SoftwareWorkspace'
 import { SalesWorkspace } from './SalesWorkspace'
 import { AdminWorkspace } from './AdminWorkspace'
 
-const WORKSPACE_MAP: Record<string, React.ComponentType> = {
-  mechanical_designer: ExecutionWorkspace,
-  production_executor: ExecutionWorkspace,
-  tuning_executor: ExecutionWorkspace,
-  tech_supervisor: SupervisorWorkspace,
-  after_sales_super: AfterSalesWorkspace,
-  project_manager: PMWorkspace,
-  software_designer: SoftwareWorkspace,
-  sales_assistant: SalesWorkspace,
+const WORKSPACE_COMPONENTS: Record<string, React.ComponentType> = {
   admin: AdminWorkspace,
+  supervisor: SupervisorWorkspace,
+  after_sales: AfterSalesWorkspace,
+  pm: PMWorkspace,
+  software: SoftwareWorkspace,
+  sales: SalesWorkspace,
+  execution: ExecutionWorkspace,
 }
 
 export function WorkspacePage() {
   const auth = useAuth()
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    loadRoles().then(() => setReady(true)).catch(() => setReady(true))
+  }, [])
 
   if (!auth.role) {
     return (
@@ -34,7 +39,15 @@ export function WorkspacePage() {
     )
   }
 
-  const Comp = WORKSPACE_MAP[auth.role]
+  if (!ready) {
+    return (
+      <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
+    )
+  }
+
+  const wsKey = getWorkspaceKey(auth.role)
+
+  const Comp = WORKSPACE_COMPONENTS[wsKey]
   if (Comp) {
     return <Comp />
   }
@@ -43,7 +56,7 @@ export function WorkspacePage() {
     <Card>
       <Typography.Title level={4}>工作台 - {auth.roleName}</Typography.Title>
       <Typography.Text type="secondary">
-        未知角色类型: {auth.role}
+        未知工作台类型: {wsKey}
       </Typography.Text>
     </Card>
   )

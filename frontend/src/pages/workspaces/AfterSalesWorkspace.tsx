@@ -38,7 +38,7 @@ export function AfterSalesWorkspace() {
       try {
         const allProjects = await listProjects()
         const allPersons = await listPersons()
-        setPersons(allPersons)
+        setPersons(allPersons.map((p) => p.name))
 
         const rows: typeof data = []
         for (const p of allProjects) {
@@ -63,8 +63,10 @@ export function AfterSalesWorkspace() {
   async function onAssign(projectId: string, values: { person_name: string | string[] }) {
     const name = Array.isArray(values.person_name) ? values.person_name[0] : values.person_name
     if (!name) return
+    const row = data.find((r) => r.project.id === projectId)
+    if (!row) return
     try {
-      await addAssignment(projectId, { person_name: name, role_code: 'tuning_executor' })
+      await addAssignment(projectId, { person_name: name, role_code: 'tuning_executor', phase_id: row.tuningPhase.id })
       message.success('安调执行人已指派')
       // 刷新
       const rows = [...data]

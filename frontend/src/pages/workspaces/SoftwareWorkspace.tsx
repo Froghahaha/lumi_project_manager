@@ -3,12 +3,8 @@ import { Alert, Card, Col, Empty, Row, Space, Spin, Tag, Typography } from 'antd
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { listProjects } from '../../api'
+import { fmtDate } from '../../utils/format'
 import type { Project } from '../../types'
-
-function fmtDate(d: string | null) {
-  if (!d) return '-'
-  return d.slice(0, 10)
-}
 
 export function SoftwareWorkspace() {
   const auth = useAuth()

@@ -15,9 +15,8 @@ import {
 } from 'antd'
 import { useAuth } from '../../contexts/AuthContext'
 import { createProject, listProjects, listTemplates, updateProject } from '../../api'
+import { EQUIP_CATEGORIES } from '../../constants'
 import type { Project, PhaseTemplate } from '../../types'
-
-const EQUIP_CATEGORIES = ['关节', '桁架', '视觉桁架', '联线', '其他']
 
 export function SalesWorkspace() {
   const auth = useAuth()

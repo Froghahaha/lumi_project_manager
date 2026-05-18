@@ -3,12 +3,8 @@ import { Alert, Card, Col, Empty, Progress, Row, Space, Spin, Tag, Typography } 
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { listProjects } from '../../api'
+import { fmtDate } from '../../utils/format'
 import type { Project, ProjectPhase } from '../../types'
-
-function fmtDate(d: string | null) {
-  if (!d) return '-'
-  return d.slice(0, 10)
-}
 
 function phasePercent(ph: ProjectPhase): number {
   if (!ph.status) return 0

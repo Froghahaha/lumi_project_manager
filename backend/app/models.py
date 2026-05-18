@@ -57,6 +57,9 @@ class Project(SQLModel, table=True):
     contract_payment_progress: float | None = None
 
     is_abnormal: bool = False
+
+    agreement_filename: str = ""  # 技术协议扫描件原始文件名
+
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
@@ -97,6 +100,7 @@ class RoleDefinition(SQLModel, table=True):
     code: str = Field(primary_key=True)
     name: str
     category: str
+    workspace_key: str = ""
     assigns_json: str | None = None
 
 

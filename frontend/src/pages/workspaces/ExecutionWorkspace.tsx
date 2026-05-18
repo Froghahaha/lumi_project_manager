@@ -12,19 +12,10 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { listProjects } from '../../api'
+import { fmtDate } from '../../utils/format'
+import { ROLE_PHASE_SEQ } from '../../constants'
 import { PhaseStatusSelect } from '../../components/PhaseStatusSelect'
 import type { Project } from '../../types'
-
-const ROLE_PHASE_SEQ: Record<string, number> = {
-  mechanical_designer: 1,
-  production_executor: 2,
-  tuning_executor: 3,
-}
-
-function fmtDate(d: string | null) {
-  if (!d) return '-'
-  return d.slice(0, 10)
-}
 
 export function ExecutionWorkspace() {
   const auth = useAuth()
@@ -63,6 +54,16 @@ export function ExecutionWorkspace() {
     return { project: proj, myPhase, prevPhase }
   }).filter((d) => d.myPhase) // 只显示有当前角色负责工序的项目
 
+  // 生产执行人：已发货但未上传技术协议的单独列出警告
+  const shippedNoAgreement = auth.role === 'production_executor'
+    ? projectData.filter((d) => {
+        const prodPh = d.project.phases.find((ph) => ph.seq === 2)
+        return prodPh?.status === '已发货' && !d.project.agreement_filename
+      })
+    : []
+  const warningIds = new Set(shippedNoAgreement.map((d) => d.project.id))
+  const normalData = projectData.filter((d) => !warningIds.has(d.project.id))
+
   if (!auth.person?.name) {
     return (
       <Card>
@@ -88,7 +89,59 @@ export function ExecutionWorkspace() {
       ) : projectData.length === 0 ? (
         <Empty description="暂无分配给您的任务" />
       ) : (
-        projectData.map(({ project: proj, myPhase, prevPhase }) => (
+        <>
+          {/* 警告：已发货但未上传技术协议 */}
+          {shippedNoAgreement.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Alert
+                type="warning"
+                showIcon
+                message={`${shippedNoAgreement.length} 个项目已发货但未上传技术协议`}
+                description={
+                  <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
+                    {shippedNoAgreement.map(({ project: proj, myPhase, prevPhase }) => (
+                      <Card
+                        key={myPhase!.id}
+                        size="small"
+                        style={{ borderColor: '#faad14' }}
+                        title={
+                          <Space>
+                            <Typography.Text strong style={{ fontSize: 15 }}>
+                              {proj.order_no}
+                            </Typography.Text>
+                            <Tag color="warning">缺少协议</Tag>
+                            <Tag>{myPhase!.phase_name}</Tag>
+                            <PhaseStatusSelect phase={myPhase!} />
+                          </Space>
+                        }
+                        extra={
+                          <Button size="small" type="link" onClick={() => navigate(`/projects/${proj.id}`)}>
+                            项目详情
+                          </Button>
+                        }
+                      >
+                        <div style={{ display: 'flex', gap: 24, fontSize: 13 }}>
+                          <div>
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>交期</Typography.Text>
+                            <div style={{ fontWeight: 600, color: proj.contract_expected_delivery_date && new Date() > new Date(proj.contract_expected_delivery_date) ? 'red' : undefined }}>
+                              {fmtDate(proj.contract_expected_delivery_date)}
+                            </div>
+                          </div>
+                          <div>
+                            <Typography.Text type="secondary" style={{ fontSize: 12 }}>工序时间</Typography.Text>
+                            <div>{fmtDate(myPhase!.start_date)} → {fmtDate(myPhase!.planned_end_date)}</div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </Space>
+                }
+                style={{ padding: 12 }}
+              />
+            </div>
+          )}
+
+          {normalData.map(({ project: proj, myPhase, prevPhase }) => (
           <Card
             key={myPhase!.id}
             size="small"
@@ -153,7 +206,8 @@ export function ExecutionWorkspace() {
               </div>
             )}
           </Card>
-        ))
+        ))}
+        </>
       )}
     </Space>
   )

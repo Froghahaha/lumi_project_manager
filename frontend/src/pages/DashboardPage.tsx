@@ -1,12 +1,7 @@
 import { Card, Col, Row, Space, Statistic, Table, Tag, Typography } from 'antd'
 import { useLoaderData, useNavigate } from 'react-router-dom'
+import { phaseOverdue } from '../utils/format'
 import type { Project } from '../types'
-
-function phaseOverdue(ph: Project['phases'][0]): boolean {
-  if (!ph.planned_end_date) return false
-  const end = ph.actual_end_date ? new Date(ph.actual_end_date) : new Date()
-  return end > new Date(ph.planned_end_date)
-}
 
 function projectHasOverdue(p: Project): boolean {
   return p.phases.some(phaseOverdue)

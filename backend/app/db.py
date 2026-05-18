@@ -31,6 +31,17 @@ def init_db() -> None:
                 conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
 
     SQLModel.metadata.create_all(engine)
+
+    # 迁移：为现有 project 表添加 agreement_filename 列
+    from sqlalchemy import inspect as sa_inspect
+    col_names = [c["name"] for c in sa_inspect(engine).get_columns("project")]
+    if "agreement_filename" not in col_names:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE project ADD COLUMN agreement_filename TEXT NOT NULL DEFAULT ''"))
+    if "workspace_key" not in [c["name"] for c in sa_inspect(engine).get_columns("role_definition")]:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE role_definition ADD COLUMN workspace_key TEXT NOT NULL DEFAULT ''"))
+
     _seed_default_template()
     _seed_role_definitions()
     _seed_persons()
@@ -68,17 +79,18 @@ def _seed_default_template() -> None:
 
 
 ROLE_DEFINITIONS = [
-    {"code": "admin",              "name": "超级管理员",       "category": "admin"},
-    {"code": "tech_supervisor",    "name": "技术主管",         "category": "supervisor",
+    {"code": "admin",              "name": "超级管理员",       "category": "admin",      "workspace": "admin"},
+    {"code": "tech_supervisor",    "name": "技术主管",         "category": "supervisor", "workspace": "supervisor",
      "assigns": ["project_manager", "mechanical_designer", "software_designer", "production_executor"]},
-    {"code": "after_sales_super",  "name": "售后主管",         "category": "supervisor",
+    {"code": "after_sales_super",  "name": "售后主管",         "category": "supervisor", "workspace": "after_sales",
      "assigns": ["tuning_executor"]},
-    {"code": "project_manager",    "name": "项目经理",         "category": "executor"},
-    {"code": "sales_assistant",    "name": "销售助理",         "category": "executor"},
-    {"code": "mechanical_designer","name": "机械设计执行人",   "category": "executor"},
-    {"code": "software_designer",  "name": "软件设计执行人",   "category": "executor"},
-    {"code": "production_executor","name": "生产执行人",       "category": "executor"},
-    {"code": "tuning_executor",    "name": "安调执行人",       "category": "executor"},
+    {"code": "project_manager",    "name": "项目经理",         "category": "executor",   "workspace": "pm"},
+    {"code": "salesman",           "name": "销售",             "category": "executor",   "workspace": "sales"},
+    {"code": "sales_assistant",    "name": "销售助理",         "category": "executor",   "workspace": "sales"},
+    {"code": "mechanical_designer","name": "机械设计执行人",   "category": "executor",   "workspace": "execution"},
+    {"code": "software_designer",  "name": "软件设计执行人",   "category": "executor",   "workspace": "software"},
+    {"code": "production_executor","name": "生产执行人",       "category": "executor",   "workspace": "execution"},
+    {"code": "tuning_executor",    "name": "安调执行人",       "category": "executor",   "workspace": "execution"},
 ]
 
 
@@ -87,17 +99,33 @@ def _seed_role_definitions() -> None:
 
     with Session(engine) as session:
         existing = session.get(RoleDefinition, "admin")
-        if existing:
-            return
-
-        for rd in ROLE_DEFINITIONS:
+        if not existing:
+            # First time: insert all role definitions
+            for rd in ROLE_DEFINITIONS:
+                import json
+                session.add(RoleDefinition(
+                    code=rd["code"],
+                    name=rd["name"],
+                    category=rd["category"],
+                    workspace_key=rd.get("workspace", ""),
+                    assigns_json=json.dumps(rd.get("assigns", []), ensure_ascii=False) if rd.get("assigns") else None,
+                ))
+        else:
+            # Update: sync workspace_key + add any new roles
             import json
-            session.add(RoleDefinition(
-                code=rd["code"],
-                name=rd["name"],
-                category=rd["category"],
-                assigns_json=json.dumps(rd.get("assigns", []), ensure_ascii=False) if rd.get("assigns") else None,
-            ))
+            for rd in ROLE_DEFINITIONS:
+                role = session.get(RoleDefinition, rd["code"])
+                if not role:
+                    session.add(RoleDefinition(
+                        code=rd["code"],
+                        name=rd["name"],
+                        category=rd["category"],
+                        workspace_key=rd.get("workspace", ""),
+                        assigns_json=json.dumps(rd.get("assigns", []), ensure_ascii=False) if rd.get("assigns") else None,
+                    ))
+                elif not role.workspace_key:
+                    role.workspace_key = rd.get("workspace", "")
+                    session.add(role)
         session.commit()
 
 
@@ -117,7 +145,7 @@ SEED_PERSONS = [
     ("张玉龙", "技术部", ["mechanical_designer"]),
     ("余皓然", "技术部", ["mechanical_designer"]),
     ("李枷明", "技术部", ["mechanical_designer"]),
-    ("刘伟伟", "销售部", []),
+    ("刘伟伟", "销售部", ["salesman"]),
     ("周小浪", "生产部", ["production_executor"]),
     ("赵建国", "售后部", ["tuning_executor"]),
     ("钱学森", "技术部", ["software_designer"]),

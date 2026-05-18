@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import time
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select, update
 
 from .db import init_db, session_scope, PRODUCTION_TEMPLATE_ID
@@ -55,7 +58,23 @@ app.add_middleware(
 
 UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+AGREEMENT_DIR = UPLOAD_DIR / "agreements"
+AGREEMENT_DIR.mkdir(parents=True, exist_ok=True)
 
+# ─── Token store (in-memory session) ──────────────────────────
+
+SESSION_TTL = 24 * 3600  # 24 hours
+_token_store: dict[str, dict] = {}
+
+
+def _cleanup_expired() -> None:
+    now = time.time()
+    expired = [t for t, v in _token_store.items() if v["expires"] < now]
+    for t in expired:
+        del _token_store[t]
+
+
+# ─── Helpers ──────────────────────────────────────────────────
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -66,8 +85,28 @@ def get_session() -> Iterable[Session]:
         yield session
 
 
-def get_actor(x_user: str | None = Header(default=None)) -> str:
-    return x_user.strip() if x_user and x_user.strip() else "system"
+@dataclass
+class Actor:
+    person_id: str
+    person_name: str
+    roles: list[str]
+
+
+def get_current_user(request: Request) -> Actor:
+    """Validate the Bearer token and return the authenticated user."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "未登录")
+    token = auth[7:]
+    _cleanup_expired()
+    session = _token_store.get(token)
+    if not session or session["expires"] < time.time():
+        raise HTTPException(401, "登录已过期，请重新登录")
+    return Actor(
+        person_id=session["person_id"],
+        person_name=session["person_name"],
+        roles=session["roles"],
+    )
 
 
 # ─── Password helpers ────────────────────────────────────────
@@ -149,6 +188,7 @@ def _project_to_out(p: Project, phases: list[ProjectPhase], assignments: list[Pr
         contract_actual_delivery_days=p.contract_actual_delivery_days,
         contract_payment_progress=p.contract_payment_progress,
         is_abnormal=p.is_abnormal,
+        agreement_filename=p.agreement_filename,
         phases=[_phase_to_out(ph, session) for ph in phases],
         assignments=[_assignment_to_out(a) for a in assignments],
         created_at=p.created_at,
@@ -166,6 +206,7 @@ def _customer_to_out(c: Customer) -> CustomerOut:
 def _role_to_out(r: RoleDefinition) -> RoleDefinitionOut:
     return RoleDefinitionOut(
         code=r.code, name=r.name, category=r.category,
+        workspace_key=r.workspace_key,
         assigns_json=r.assigns_json,
     )
 
@@ -189,12 +230,12 @@ def on_startup() -> None:
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/customers", response_model=list[CustomerOut])
-def list_customers(session: Session = Depends(get_session)):
+def list_customers(actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     return [_customer_to_out(c) for c in session.exec(select(Customer))]
 
 
 @app.post("/customers", response_model=CustomerOut, status_code=201)
-def create_customer(body: CustomerCreate, session: Session = Depends(get_session)):
+def create_customer(body: CustomerCreate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     existing = session.exec(select(Customer).where(Customer.code == body.code)).first()
     if existing:
         raise HTTPException(400, "customer code already exists")
@@ -209,7 +250,7 @@ def create_customer(body: CustomerCreate, session: Session = Depends(get_session
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/templates", response_model=list[PhaseTemplateOut])
-def list_templates(session: Session = Depends(get_session)):
+def list_templates(actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     from .models import PhaseTemplate
     templates = list(session.exec(select(PhaseTemplate)))
     out = []
@@ -243,6 +284,7 @@ def list_projects(
     is_abnormal: bool | None = Query(default=None),
     assigned_person: str | None = Query(default=None),
     role_code: str | None = Query(default=None),
+    actor: Actor = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     stmt = select(Project)
@@ -271,7 +313,7 @@ def list_projects(
 
 
 @app.get("/projects/{project_id}", response_model=ProjectOut)
-def get_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
+def get_project(project_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
     if not p:
         raise HTTPException(404, "project not found")
@@ -285,7 +327,7 @@ def get_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
 
 
 @app.post("/projects", response_model=ProjectOut, status_code=201)
-def create_project(body: ProjectCreate, session: Session = Depends(get_session)):
+def create_project(body: ProjectCreate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     if body.customer_id:
         customer = session.get(Customer, body.customer_id)
         if not customer:
@@ -294,11 +336,12 @@ def create_project(body: ProjectCreate, session: Session = Depends(get_session))
         customer_code = body.order_no.rsplit("-", 1)[0] if "-" in body.order_no else body.order_no
         customer = _get_or_create_customer(session, customer_code)
 
+    effective_template_id = body.template_id or PRODUCTION_TEMPLATE_ID
     p = Project(
         order_no=body.order_no,
         customer_id=customer.id,
         end_customer=body.end_customer,
-        template_id=body.template_id,
+        template_id=effective_template_id,
         equipment_category=body.equipment_category,
         equipment_quantity=body.equipment_quantity,
         equipment_spec=body.equipment_spec,
@@ -328,9 +371,9 @@ def create_project(body: ProjectCreate, session: Session = Depends(get_session))
         ))
 
     # 如果没有传入 phases，从模板自动生成
-    if not body.phases and body.template_id:
+    if not body.phases and effective_template_id:
         items = list(session.exec(
-            select(PhaseTemplateItem).where(PhaseTemplateItem.template_id == body.template_id)
+            select(PhaseTemplateItem).where(PhaseTemplateItem.template_id == effective_template_id)
         ))
         for item in sorted(items, key=lambda x: x.seq):
             session.add(ProjectPhase(
@@ -341,11 +384,12 @@ def create_project(body: ProjectCreate, session: Session = Depends(get_session))
 
     # Assignments
     for a in body.assignments:
+        ph_id = uuid.UUID(a.phase_id) if a.phase_id else None
         session.add(ProjectAssignment(
             project_id=p.id,
             person_name=a.person_name,
             role_code=a.role_code,
-            target_phase_seq=a.target_phase_seq,
+            phase_id=ph_id,
         ))
 
     session.flush()
@@ -362,6 +406,7 @@ def create_project(body: ProjectCreate, session: Session = Depends(get_session))
 def update_project(
     project_id: uuid.UUID,
     body: ProjectUpdate,
+    actor: Actor = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     p = session.get(Project, project_id)
@@ -369,10 +414,24 @@ def update_project(
         raise HTTPException(404, "project not found")
     if body.is_abnormal is not None:
         p.is_abnormal = body.is_abnormal
-    if body.contract_payment_progress is not None:
-        p.contract_payment_progress = body.contract_payment_progress
+    if body.equipment_category is not None:
+        p.equipment_category = body.equipment_category
+    if body.equipment_quantity is not None:
+        p.equipment_quantity = body.equipment_quantity
+    if body.equipment_spec is not None:
+        p.equipment_spec = body.equipment_spec
+    if body.end_customer is not None:
+        p.end_customer = body.end_customer
+    if body.contract_start_date is not None:
+        p.contract_start_date = body.contract_start_date
+    if body.contract_duration_days is not None:
+        p.contract_duration_days = body.contract_duration_days
+    if body.contract_expected_delivery_date is not None:
+        p.contract_expected_delivery_date = body.contract_expected_delivery_date
     if body.contract_actual_delivery_days is not None:
         p.contract_actual_delivery_days = body.contract_actual_delivery_days
+    if body.contract_payment_progress is not None:
+        p.contract_payment_progress = body.contract_payment_progress
     p.updated_at = utcnow()
     session.add(p)
     session.flush()
@@ -386,7 +445,7 @@ def update_project(
 
 
 @app.delete("/projects/{project_id}", status_code=204)
-def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session)):
+def delete_project(project_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
     if not p:
         raise HTTPException(404, "project not found")
@@ -396,7 +455,65 @@ def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session
         for inc in session.exec(select(PhaseIncident).where(PhaseIncident.phase_id == ph.id)):
             session.delete(inc)
         session.delete(ph)
+    # 删除技术协议文件
+    project_dir = AGREEMENT_DIR / str(project_id)
+    if project_dir.exists():
+        import shutil
+        shutil.rmtree(project_dir)
     session.delete(p)
+
+
+# ═══════════════════════════════════════════════════════════
+# Agreement (技术协议)
+# ═══════════════════════════════════════════════════════════
+
+@app.post("/projects/{project_id}/agreement", status_code=200)
+def upload_agreement(
+    project_id: uuid.UUID,
+    file: UploadFile = File(...),
+    actor: Actor = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """上传技术协议扫描件（仅支持一个文件，重复上传会覆盖）。"""
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+
+    # 清理旧文件
+    project_dir = AGREEMENT_DIR / str(project_id)
+    if project_dir.exists():
+        for old in project_dir.iterdir():
+            old.unlink()
+    else:
+        project_dir.mkdir(parents=True, exist_ok=True)
+
+    # 保存新文件：保留原始文件名
+    content = file.file.read()
+    (project_dir / file.filename).write_bytes(content)
+    p.agreement_filename = file.filename
+    p.updated_at = utcnow()
+    session.add(p)
+    session.flush()
+    return {"filename": file.filename, "size": len(content)}
+
+
+@app.get("/projects/{project_id}/agreement")
+def download_agreement(project_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
+    """下载技术协议扫描件。"""
+    p = session.get(Project, project_id)
+    if not p:
+        raise HTTPException(404, "project not found")
+    if not p.agreement_filename:
+        raise HTTPException(404, "未上传技术协议")
+
+    file_path = AGREEMENT_DIR / str(project_id) / p.agreement_filename
+    if not file_path.exists():
+        raise HTTPException(404, "协议文件已丢失")
+    return FileResponse(
+        path=str(file_path),
+        filename=p.agreement_filename,
+        media_type="application/octet-stream",
+    )
 
 
 # ═══════════════════════════════════════════════════════════
@@ -404,7 +521,7 @@ def delete_project(project_id: uuid.UUID, session: Session = Depends(get_session
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/projects/{project_id}/phases", response_model=list[ProjectPhaseOut])
-def list_phases(project_id: uuid.UUID, session: Session = Depends(get_session)):
+def list_phases(project_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
     if not p:
         raise HTTPException(404, "project not found")
@@ -415,7 +532,7 @@ def list_phases(project_id: uuid.UUID, session: Session = Depends(get_session)):
 
 
 @app.post("/projects/{project_id}/phases", response_model=ProjectPhaseOut, status_code=201)
-def add_phase(project_id: uuid.UUID, body: ProjectPhaseCreate, session: Session = Depends(get_session)):
+def add_phase(project_id: uuid.UUID, body: ProjectPhaseCreate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
     if not p:
         raise HTTPException(404, "project not found")
@@ -452,6 +569,7 @@ def update_phase(
     project_id: uuid.UUID,
     phase_id: uuid.UUID,
     body: ProjectPhaseCreate,
+    actor: Actor = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     ph = session.get(ProjectPhase, phase_id)
@@ -479,7 +597,7 @@ def update_phase(
 
 
 @app.delete("/projects/{project_id}/phases/{phase_id}", status_code=204)
-def delete_phase(project_id: uuid.UUID, phase_id: uuid.UUID, session: Session = Depends(get_session)):
+def delete_phase(project_id: uuid.UUID, phase_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     ph = session.get(ProjectPhase, phase_id)
     if not ph or ph.project_id != project_id:
         raise HTTPException(404, "phase not found")
@@ -496,6 +614,7 @@ def delete_phase(project_id: uuid.UUID, phase_id: uuid.UUID, session: Session = 
 def list_phases_global(
     responsible: str | None = Query(default=None),
     project_id: uuid.UUID | None = Query(default=None),
+    actor: Actor = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     stmt = select(ProjectPhase)
@@ -508,7 +627,7 @@ def list_phases_global(
 
 
 @app.get("/phases/{phase_id}", response_model=ProjectPhaseOut)
-def get_phase(phase_id: uuid.UUID, session: Session = Depends(get_session)):
+def get_phase(phase_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     ph = session.get(ProjectPhase, phase_id)
     if not ph:
         raise HTTPException(404, "phase not found")
@@ -516,7 +635,7 @@ def get_phase(phase_id: uuid.UUID, session: Session = Depends(get_session)):
 
 
 @app.patch("/phases/{phase_id}/status", response_model=ProjectPhaseOut)
-def update_phase_status(phase_id: uuid.UUID, body: PhaseStatusUpdate, session: Session = Depends(get_session)):
+def update_phase_status(phase_id: uuid.UUID, body: PhaseStatusUpdate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     import json
     ph = session.get(ProjectPhase, phase_id)
     if not ph:
@@ -545,7 +664,7 @@ def update_phase_status(phase_id: uuid.UUID, body: PhaseStatusUpdate, session: S
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/phases/{phase_id}/incidents", response_model=list[PhaseIncidentOut])
-def list_incidents(phase_id: uuid.UUID, session: Session = Depends(get_session)):
+def list_incidents(phase_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     ph = session.get(ProjectPhase, phase_id)
     if not ph:
         raise HTTPException(404, "phase not found")
@@ -555,7 +674,7 @@ def list_incidents(phase_id: uuid.UUID, session: Session = Depends(get_session))
 
 
 @app.post("/phases/{phase_id}/incidents", response_model=PhaseIncidentOut, status_code=201)
-def add_incident(phase_id: uuid.UUID, body: PhaseIncidentCreate, session: Session = Depends(get_session)):
+def add_incident(phase_id: uuid.UUID, body: PhaseIncidentCreate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     ph = session.get(ProjectPhase, phase_id)
     if not ph:
         raise HTTPException(404, "phase not found")
@@ -571,7 +690,7 @@ def add_incident(phase_id: uuid.UUID, body: PhaseIncidentCreate, session: Sessio
 
 
 @app.delete("/phases/{phase_id}/incidents/{incident_id}", status_code=204)
-def delete_incident(phase_id: uuid.UUID, incident_id: uuid.UUID, session: Session = Depends(get_session)):
+def delete_incident(phase_id: uuid.UUID, incident_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     inc = session.get(PhaseIncident, incident_id)
     if not inc or inc.phase_id != phase_id:
         raise HTTPException(404, "incident not found")
@@ -592,7 +711,7 @@ def list_roles(session: Session = Depends(get_session)):
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/projects/{project_id}/assignments", response_model=list[ProjectAssignmentOut])
-def list_assignments(project_id: uuid.UUID, session: Session = Depends(get_session)):
+def list_assignments(project_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
     if not p:
         raise HTTPException(404, "project not found")
@@ -602,7 +721,7 @@ def list_assignments(project_id: uuid.UUID, session: Session = Depends(get_sessi
 
 
 @app.post("/projects/{project_id}/assignments", response_model=ProjectAssignmentOut, status_code=201)
-def add_assignment(project_id: uuid.UUID, body: ProjectAssignmentCreate, session: Session = Depends(get_session)):
+def add_assignment(project_id: uuid.UUID, body: ProjectAssignmentCreate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     p = session.get(Project, project_id)
     if not p:
         raise HTTPException(404, "project not found")
@@ -626,7 +745,7 @@ def add_assignment(project_id: uuid.UUID, body: ProjectAssignmentCreate, session
 
 
 @app.delete("/projects/{project_id}/assignments/{assignment_id}", status_code=204)
-def remove_assignment(project_id: uuid.UUID, assignment_id: uuid.UUID, session: Session = Depends(get_session)):
+def remove_assignment(project_id: uuid.UUID, assignment_id: uuid.UUID, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     a = session.get(ProjectAssignment, assignment_id)
     if not a or a.project_id != project_id:
         raise HTTPException(404, "assignment not found")
@@ -641,6 +760,7 @@ def remove_assignment(project_id: uuid.UUID, assignment_id: uuid.UUID, session: 
 def list_assignments_global(
     person_name: str | None = Query(default=None),
     role_code: str | None = Query(default=None),
+    actor: Actor = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     stmt = select(ProjectAssignment)
@@ -678,7 +798,7 @@ def list_persons(
 
 
 @app.post("/persons", response_model=PersonOut, status_code=201)
-def create_person(body: PersonCreate, session: Session = Depends(get_session)):
+def create_person(body: PersonCreate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     existing = session.exec(select(Person).where(Person.name == body.name)).first()
     if existing:
         raise HTTPException(400, "person already exists")
@@ -695,7 +815,7 @@ def create_person(body: PersonCreate, session: Session = Depends(get_session)):
 
 
 @app.patch("/persons/{person_id}", response_model=PersonOut)
-def update_person(person_id: uuid.UUID, body: PersonCreate, session: Session = Depends(get_session)):
+def update_person(person_id: uuid.UUID, body: PersonCreate, actor: Actor = Depends(get_current_user), session: Session = Depends(get_session)):
     p = session.get(Person, person_id)
     if not p:
         raise HTTPException(404, "person not found")
@@ -729,5 +849,14 @@ def login(body: LoginRequest, session: Session = Depends(get_session)):
     if not _verify_password(body.password, person.password_hash):
         raise HTTPException(401, "密码错误")
     token = secrets.token_hex(32)
+    roles = [pr.role_code for pr in session.exec(
+        select(PersonRole).where(PersonRole.person_id == person.id)
+    )]
+    _token_store[token] = {
+        "person_id": str(person.id),
+        "person_name": person.name,
+        "roles": roles,
+        "expires": time.time() + SESSION_TTL,
+    }
     person_out = _person_to_out(person, session)
     return LoginResponse(person=person_out, token=token)
