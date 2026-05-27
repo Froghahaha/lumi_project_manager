@@ -1,27 +1,22 @@
 import { Card, Col, Row, Space, Statistic, Table, Tag, Typography } from 'antd'
 import { useLoaderData, useNavigate } from 'react-router-dom'
-import { phaseOverdue } from '../utils/format'
+import { equipSummary } from '../utils/format'
 import type { Project } from '../types'
-
-function projectHasOverdue(p: Project): boolean {
-  return p.phases.some(phaseOverdue)
-}
 
 export function DashboardPage() {
   const { projects } = useLoaderData() as { projects: Project[] }
   const navigate = useNavigate()
 
-  const abnormal = projects.filter((p) => p.is_abnormal).length
-  const overdue = projects.filter(projectHasOverdue).length
+  const overdue = projects.filter((p) => (p.project_status || '正常') === '逾期').length
   const totalPhases = projects.reduce((sum, p) => sum + p.phases.length, 0)
   const overduePhases = projects.reduce(
-    (sum, p) => sum + p.phases.filter(phaseOverdue).length,
+    (sum, p) => sum + p.phases.filter((ph) => ph.phase_progress === '逾期').length,
     0,
   )
 
   const categories = new Map<string, number>()
   projects.forEach((p) => {
-    const cat = p.equipment_category || '其他'
+    const cat = equipSummary(p.equipment_list).category || '其他'
     categories.set(cat, (categories.get(cat) ?? 0) + 1)
   })
 
@@ -39,7 +34,7 @@ export function DashboardPage() {
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="异常项目" value={abnormal} valueStyle={{ color: abnormal > 0 ? 'red' : undefined }} />
+            <Statistic title="逾期项目" value={overdue} valueStyle={{ color: overdue > 0 ? 'red' : undefined }} />
           </Card>
         </Col>
         <Col span={6}>
@@ -98,13 +93,13 @@ export function DashboardPage() {
                 {
                   title: '设备',
                   render: (_, p) => (
-                    <Tag>{p.equipment_category || '-'}</Tag>
+                    <Tag>{equipSummary(p.equipment_list).category}</Tag>
                   ),
                 },
                 {
                   title: '状态',
                   render: (_, p) =>
-                    p.is_abnormal ? <Tag color="red">异常</Tag> : <Tag color="green">正常</Tag>,
+                    (p.project_status || '正常') === '逾期' ? <Tag color="red">逾期</Tag> : (p.project_status || '正常') === '已完成' ? <Tag color="green">完成</Tag> : <Tag color="blue">正常</Tag>,
                 },
               ]}
             />

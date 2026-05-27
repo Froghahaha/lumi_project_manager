@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Alert, Card, Col, Empty, Progress, Row, Space, Spin, Tag, Typography } from 'antd'
-import { Link, useNavigate } from 'react-router-dom'
+import { Card, Col, Empty, Progress, Row, Space, Tag, Typography } from 'antd'
+import { ExclamationCircleOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import { ProjectFilterBar } from '../../components/ProjectFilterBar'
+import { WorkspaceShell } from '../../components/WorkspaceShell'
 import { useAuth } from '../../contexts/AuthContext'
 import { listProjects } from '../../api'
-import { fmtDate } from '../../utils/format'
+import { fmtDate, phaseStatusTagProps } from '../../utils/format'
 import type { Project, ProjectPhase } from '../../types'
 
 function phasePercent(ph: ProjectPhase): number {
@@ -39,31 +42,24 @@ export function PMWorkspace() {
   }, [auth.person?.name || '', auth.role])
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          工作台 - {auth.roleName}
-        </Typography.Title>
-        <Tag color="blue">{auth.person?.name || ''}</Tag>
-      </Space>
-
-      {error ? <Alert type="error" showIcon message="请求失败" description={error} /> : null}
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
-      ) : projects.length === 0 ? (
+    <WorkspaceShell loading={loading} error={error}>
+      {projects.length === 0 ? (
         <Empty description="暂无指派给您的项目" />
       ) : (
+        <ProjectFilterBar projects={projects}>
+          {(filtered) => (
         <Row gutter={[16, 16]}>
-          {projects.map((p) => {
+          {filtered.map((p) => {
             const sortedPhases = [...p.phases].sort((a, b) => a.seq - b.seq)
-            const hasOverdue = sortedPhases.some((ph) => ph.planned_end_date && !ph.actual_end_date && new Date() > new Date(ph.planned_end_date))
+            const projectStatus = p.project_status || '正常'
+            const hasActiveRectify = sortedPhases.some((ph) => ph.is_rectify && !ph.actual_end_date)
             return (
               <Col key={p.id} xs={24} sm={12} lg={8}>
                 <Card
                   size="small"
                   hoverable
                   onClick={() => navigate(`/projects/${p.id}`)}
+                  style={hasActiveRectify ? { borderColor: '#faad14', borderWidth: 2 } : {}}
                   title={
                     <Space>
                       <Typography.Text strong>{p.order_no}</Typography.Text>
@@ -72,16 +68,16 @@ export function PMWorkspace() {
                   }
                   extra={
                     <Space size={4}>
-                      {p.is_abnormal ? <Tag color="red">异常</Tag> : null}
-                      {hasOverdue ? <Tag color="orange">逾期</Tag> : <Tag color="green">正常</Tag>}
+                      {hasActiveRectify && <Tag color="warning" icon={<ExclamationCircleOutlined />}>整改中</Tag>}
+                      {projectStatus === '逾期' ? <Tag color="red">逾期</Tag> : projectStatus === '已完成' ? <Tag color="green">完成</Tag> : <Tag color="green">正常</Tag>}
                     </Space>
                   }
                 >
                   <Space direction="vertical" size={6} style={{ width: '100%' }}>
                     <Space size={4} wrap>
                       {sortedPhases.map((ph) => (
-                        <Tag key={ph.seq} color={ph.status && ph.status !== '未开始' ? 'blue' : 'default'}>
-                          {ph.phase_name}{ph.sub_name ? `-${ph.sub_name}` : ''}: {ph.status || '-'}
+                        <Tag key={ph.id} color={phaseStatusTagProps(ph).color}>
+                          {ph.phase_name}: {phaseStatusTagProps(ph).text}
                         </Tag>
                       ))}
                     </Space>
@@ -102,7 +98,9 @@ export function PMWorkspace() {
             )
           })}
         </Row>
+          )}
+        </ProjectFilterBar>
       )}
-    </Space>
+    </WorkspaceShell>
   )
 }

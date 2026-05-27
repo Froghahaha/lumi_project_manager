@@ -67,10 +67,11 @@ export async function createProject(input: {
   customer_id?: string | null
   end_customer?: string | null
   template_id?: string | null
-  equipment_category?: string | null
-  equipment_quantity?: number
-  equipment_spec?: string | null
+  contract_number?: string | null
+  contract_amount?: number | null
+  contract_deposit_ratio?: number | null
   contract_start_date?: string | null
+  contract_effective_date?: string | null
   contract_duration_days?: number | null
   contract_expected_delivery_date?: string | null
   contract_actual_delivery_days?: number | null
@@ -84,6 +85,7 @@ export async function createProject(input: {
     planned_end_date?: string | null
   }[]
   assignments?: { person_name: string; role_code: string; phase_id?: string | null }[]
+  equipment_list?: { category: string; spec: string; quantity: number }[]
 }): Promise<Project> {
   return request<Project>('/projects', { method: 'POST', body: JSON.stringify(input) })
 }
@@ -92,11 +94,11 @@ export async function updateProject(
   id: string,
   patch: {
     is_abnormal?: boolean
-    equipment_category?: string | null
-    equipment_quantity?: number
-    equipment_spec?: string | null
     end_customer?: string | null
+    contract_number?: string | null
+    contract_amount?: number | null
     contract_start_date?: string | null
+    contract_effective_date?: string | null
     contract_duration_days?: number | null
     contract_expected_delivery_date?: string | null
     contract_actual_delivery_days?: number | null
@@ -191,6 +193,22 @@ export async function listCustomers(): Promise<Customer[]> {
   return request<Customer[]>('/customers')
 }
 
+export async function createCustomer(input: { code: string; name: string }): Promise<Customer> {
+  return request<Customer>('/customers', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export async function updateCustomer(id: string, input: { code?: string; name?: string }): Promise<Customer> {
+  return request<Customer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+export async function deleteCustomer(id: string): Promise<void> {
+  await request<void>(`/customers/${id}`, { method: 'DELETE' })
+}
+
+export async function getNextOrderSeq(customerCode: string): Promise<{ customer_code: string; next_seq: number }> {
+  return request<{ customer_code: string; next_seq: number }>(`/projects/next-order-seq?customer_code=${encodeURIComponent(customerCode)}`)
+}
+
 export async function listTemplates(): Promise<PhaseTemplate[]> {
   return request<PhaseTemplate[]>('/templates')
 }
@@ -235,12 +253,24 @@ export async function listPersons(role_code?: string): Promise<Person[]> {
   return request<Person[]>(`/persons${qs}`)
 }
 
-export async function createPerson(input: { name: string; department?: string; roles: string[] }): Promise<Person> {
+export async function createPerson(input: { name: string; department?: string; role_code?: string }): Promise<Person> {
   return request<Person>('/persons', { method: 'POST', body: JSON.stringify(input) })
 }
 
-export async function updatePerson(id: string, input: { name?: string; department?: string; roles: string[] }): Promise<Person> {
+export async function updatePerson(id: string, input: { name?: string; department?: string; role_code?: string }): Promise<Person> {
   return request<Person>(`/persons/${id}`, { method: 'PATCH', body: JSON.stringify(input) })
+}
+
+export async function deletePerson(id: string): Promise<void> {
+  await request<void>(`/persons/${id}`, { method: 'DELETE' })
+}
+
+export async function togglePersonActive(id: string, isActive: boolean): Promise<Person> {
+  return request<Person>(`/persons/${id}/status`, { method: 'PATCH', body: JSON.stringify({ is_active: isActive }) })
+}
+
+export async function resetPersonPassword(id: string, newPassword: string): Promise<{ password: string }> {
+  return request<{ password: string }>(`/persons/${id}/reset-password`, { method: 'POST', body: JSON.stringify({ new_password: newPassword }) })
 }
 
 export async function uploadAgreement(projectId: string, file: File): Promise<{ filename: string; size: number }> {
@@ -260,6 +290,10 @@ export async function uploadAgreement(projectId: string, file: File): Promise<{ 
 
 export function getAgreementUrl(projectId: string): string {
   return `${API_BASE}/projects/${projectId}/agreement`
+}
+
+export async function getMyPermissions(): Promise<Record<string, boolean>> {
+  return request<Record<string, boolean>>('/me/permissions')
 }
 
 export async function login(person_name: string, password: string): Promise<LoginResponse> {

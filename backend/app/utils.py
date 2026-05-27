@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+import hashlib
+import secrets
+import uuid
+from datetime import date, timedelta
+
+from sqlmodel import Session, select
+
+from .models import (
+    Customer,
+    Person,
+    PhaseIncident,
+    Project,
+    ProjectAssignment,
+    ProjectEquipment,
+    ProjectPhase,
+    RoleDefinition,
+)
+from .schemas import (
+    CustomerOut,
+    PersonOut,
+    PhaseIncidentOut,
+    PhaseTemplateItemOut,
+    PhaseTemplateOut,
+    ProjectAssignmentOut,
+    ProjectEquipmentOut,
+    ProjectOut,
+    ProjectPhaseOut,
+    RoleDefinitionOut,
+)
+
+# ─── Working-day helpers ────────────────────────────────────
+
+WARNING_LEAD_DAYS = 3
+
+
+def add_working_days(start: date, n_days: int) -> date:
+    """Return the date after adding n_days working days (excl. Sat/Sun)."""
+    current = start
+    added = 0
+    while added < n_days:
+        current += timedelta(days=1)
+        if current.weekday() < 5:
+            added += 1
+    return current
+
+
+def calc_warning_date(planned_end: date, lead_days: int = WARNING_LEAD_DAYS) -> date:
+    """Calculate warning_date = planned_end - lead_days working days."""
+    current = planned_end
+    count = 0
+    while count < lead_days:
+        current -= timedelta(days=1)
+        if current.weekday() < 5:
+            count += 1
+    return current
+
+
+# ─── Computed phase / project status ────────────────────────
+
+
+def compute_phase_progress(
+    status: str,
+    planned_end_date: date | None,
+    actual_end_date: date | None,
+    warning_date: date | None = None,
+    terminal_statuses: list[str] | None = None,
+    *,
+    _today: date | None = None,
+) -> str:
+    """Compute phase progress status — single source of truth.
+
+    Returns one of: 未开始 | 进行中 | 预警 | 逾期 | 已完成
+
+    If terminal_statuses is configured (phase template defines what
+    'done' means), it is the sole completion criterion.
+    Otherwise fall back to actual_end_date (backward compatibility).
+    """
+    if terminal_statuses:
+        if status in terminal_statuses:
+            return '已完成'
+    elif actual_end_date is not None:
+        return '已完成'
+    today = _today or date.today()
+    if planned_end_date is not None:
+        if today > planned_end_date:
+            return '逾期'
+        wd = warning_date or calc_warning_date(planned_end_date)
+        if today >= wd:
+            return '预警'
+    if status and status != '未开始':
+        return '进行中'
+    return '未开始'
+
+
+def compute_project_status(phases: list[dict]) -> str:
+    """Compute project-level status from phase progress values.
+
+    Returns one of: 正常 | 逾期 | 已完成
+    """
+    if not phases:
+        return '正常'
+    if any(ph.get('phase_progress') == '逾期' for ph in phases):
+        return '逾期'
+    if all(ph.get('phase_progress') == '已完成' for ph in phases):
+        return '已完成'
+    return '正常'
+
+
+# ─── Password helpers ──────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(8)
+    h = hashlib.sha256(f"{salt}:{password}".encode()).hexdigest()
+    return f"{salt}:{h}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    if ":" not in password_hash:
+        return False
+    salt, h = password_hash.split(":", 1)
+    return hashlib.sha256(f"{salt}:{password}".encode()).hexdigest() == h
+
+
+# ─── Serialization helpers ─────────────────────────────────
+
+def phase_to_out(ph: ProjectPhase, session: Session | None = None) -> ProjectPhaseOut:
+    import json
+    incidents: list[PhaseIncidentOut] = []
+    if session is not None:
+        incidents = [incident_to_out(i) for i in session.exec(
+            select(PhaseIncident).where(PhaseIncident.phase_id == ph.id)
+        )]
+    progress = compute_phase_progress(
+        status=ph.status,
+        planned_end_date=ph.planned_end_date,
+        actual_end_date=ph.actual_end_date,
+        warning_date=ph.warning_date,
+        terminal_statuses=json.loads(ph.terminal_statuses_json) if ph.terminal_statuses_json else None,
+    )
+    return ProjectPhaseOut(
+        id=ph.id, project_id=ph.project_id,
+        seq=ph.seq, phase_name=ph.phase_name,
+        sub_name=ph.sub_name, responsible=ph.responsible, status=ph.status,
+        start_date=ph.start_date, warning_date=ph.warning_date,
+        planned_end_date=ph.planned_end_date, planned_duration=ph.planned_duration,
+        actual_end_date=ph.actual_end_date, actual_duration=ph.actual_duration,
+        is_rectify=ph.is_rectify,
+        phase_progress=progress, sub_statuses_json=ph.sub_statuses_json, terminal_statuses_json=ph.terminal_statuses_json,
+        incidents=incidents,
+        created_at=ph.created_at, updated_at=ph.updated_at,
+    )
+
+
+def incident_to_out(inc: PhaseIncident) -> PhaseIncidentOut:
+    return PhaseIncidentOut(
+        id=inc.id, phase_id=inc.phase_id,
+        occurred_at=inc.occurred_at, category=inc.category,
+        description=inc.description, created_at=inc.created_at,
+    )
+
+
+def equipment_to_out(e: ProjectEquipment) -> ProjectEquipmentOut:
+    return ProjectEquipmentOut(
+        id=e.id, project_id=e.project_id,
+        category=e.category, spec=e.spec, quantity=e.quantity,
+    )
+
+
+def assignment_to_out(a: ProjectAssignment) -> ProjectAssignmentOut:
+    return ProjectAssignmentOut(
+        id=a.id, project_id=a.project_id,
+        person_name=a.person_name, role_code=a.role_code,
+        phase_id=str(a.phase_id) if a.phase_id else None,
+        created_at=a.created_at,
+    )
+
+
+def project_to_out(
+    p: Project, phases: list[ProjectPhase],
+    assignments: list[ProjectAssignment], session: Session | None = None,
+) -> ProjectOut:
+    equip_list = list(session.exec(
+        select(ProjectEquipment).where(ProjectEquipment.project_id == p.id)
+    )) if session else []
+    phase_outs = [phase_to_out(ph, session) for ph in phases]
+    pj_status = compute_project_status([
+        {'phase_progress': po.phase_progress} for po in phase_outs
+    ])
+    return ProjectOut(
+        id=p.id, order_no=p.order_no,
+        customer_id=p.customer_id, end_customer=p.end_customer,
+        template_id=p.template_id,
+        contract_number=p.contract_number,
+        contract_amount=p.contract_amount,
+        contract_deposit_ratio=p.contract_deposit_ratio,
+        contract_start_date=p.contract_start_date,
+        contract_effective_date=p.contract_effective_date,
+        contract_duration_days=p.contract_duration_days,
+        contract_expected_delivery_date=p.contract_expected_delivery_date,
+        contract_actual_delivery_days=p.contract_actual_delivery_days,
+        contract_payment_progress=p.contract_payment_progress,
+        is_abnormal=p.is_abnormal,
+        agreement_filename=p.agreement_filename,
+        project_status=pj_status,
+        phases=phase_outs,
+        assignments=[assignment_to_out(a) for a in assignments],
+        equipment_list=[equipment_to_out(e) for e in equip_list],
+        created_at=p.created_at, updated_at=p.updated_at,
+    )
+
+
+def customer_to_out(c: Customer) -> CustomerOut:
+    return CustomerOut(
+        id=c.id, code=c.code, name=c.name,
+        created_at=c.created_at, updated_at=c.updated_at,
+    )
+
+
+def role_to_out(r: RoleDefinition) -> RoleDefinitionOut:
+    return RoleDefinitionOut(
+        code=r.code, name=r.name, category=r.category,
+        workspace_key=r.workspace_key, assigns_json=r.assigns_json,
+    )
+
+
+def person_to_out(p: Person) -> PersonOut:
+    return PersonOut(
+        id=p.id, name=p.name, department=p.department,
+        role_code=p.role_code,
+        is_active=p.is_active, created_at=p.created_at,
+    )
+
+
+def get_or_create_customer(session: Session, code: str) -> Customer:
+    customer = session.exec(select(Customer).where(Customer.code == code)).first()
+    if not customer:
+        customer = Customer(code=code, name=code)
+        session.add(customer)
+        session.flush()
+    return customer

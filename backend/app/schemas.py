@@ -15,6 +15,11 @@ class CustomerCreate(BaseModel):
     name: str
 
 
+class CustomerUpdate(BaseModel):
+    code: str | None = None
+    name: str | None = None
+
+
 class CustomerOut(BaseModel):
     id: uuid.UUID
     code: str
@@ -32,6 +37,7 @@ class PhaseTemplateItemCreate(BaseModel):
     phase_name: str
     description: str | None = None
     sub_statuses_json: str = ""
+    terminal_statuses_json: str = ""
 
 
 class PhaseTemplateCreate(BaseModel):
@@ -47,6 +53,7 @@ class PhaseTemplateItemOut(BaseModel):
     phase_name: str
     description: str | None = None
     sub_statuses_json: str = ""
+    terminal_statuses_json: str = ""
 
 
 class PhaseTemplateOut(BaseModel):
@@ -94,6 +101,9 @@ class ProjectPhaseCreate(BaseModel):
     actual_end_date: date | None = None
     actual_duration: int | None = None
     incidents: list[PhaseIncidentCreate] = Field(default_factory=list)
+    is_rectify: bool = False
+    sub_statuses_json: str = ""  # valid options, denormalized from template
+    terminal_statuses_json: str = ""
 
 
 class ProjectPhaseOut(BaseModel):
@@ -111,6 +121,11 @@ class ProjectPhaseOut(BaseModel):
     planned_duration: int | None = None
     actual_end_date: date | None = None
     actual_duration: int | None = None
+    is_rectify: bool = False
+
+    phase_progress: str = ""  # 未开始|进行中|预警|逾期|已完成 — computed by backend
+    sub_statuses_json: str = ""  # valid options, denormalized from template
+    terminal_statuses_json: str = ""  # single source for completion criteria
 
     incidents: list[PhaseIncidentOut] = Field(default_factory=list)
 
@@ -133,21 +148,19 @@ class PhaseStatusUpdate(BaseModel):
 class PersonCreate(BaseModel):
     name: str
     department: str = ""
-    roles: list[str] = Field(default_factory=list)  # role_codes
+    role_code: str = ""
 
 
-class PersonRoleOut(BaseModel):
-    id: uuid.UUID
-    person_id: uuid.UUID
-    role_code: str
+class PersonStatusUpdate(BaseModel):
+    is_active: bool
 
 
 class PersonOut(BaseModel):
     id: uuid.UUID
     name: str
     department: str
+    role_code: str = ""
     is_active: bool
-    roles: list[str] = Field(default_factory=list)  # role_codes
     created_at: datetime
 
 
@@ -163,6 +176,14 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     person: PersonOut
     token: str
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+class ResetPasswordResponse(BaseModel):
+    password: str
 
 
 # ============================================================
@@ -197,6 +218,24 @@ class ProjectAssignmentOut(BaseModel):
 
 
 # ============================================================
+# ProjectEquipment
+# ============================================================
+
+class ProjectEquipmentCreate(BaseModel):
+    category: str = ""
+    spec: str = ""
+    quantity: int = 1
+
+
+class ProjectEquipmentOut(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    category: str
+    spec: str
+    quantity: int
+
+
+# ============================================================
 # Project
 # ============================================================
 
@@ -206,11 +245,11 @@ class ProjectCreate(BaseModel):
     end_customer: str | None = None
     template_id: uuid.UUID | None = None
 
-    equipment_category: str | None = None
-    equipment_quantity: int = 1
-    equipment_spec: str | None = None
-
+    contract_number: str | None = None
+    contract_amount: float | None = None  # 合同金额
+    contract_deposit_ratio: float | None = None  # 首付比例阈值
     contract_start_date: date | None = None
+    contract_effective_date: date | None = None
     contract_duration_days: int | None = None
     contract_expected_delivery_date: date | None = None
     contract_actual_delivery_days: int | None = None
@@ -220,15 +259,17 @@ class ProjectCreate(BaseModel):
 
     phases: list[ProjectPhaseCreate] = Field(default_factory=list)
     assignments: list[ProjectAssignmentCreate] = Field(default_factory=list)
+    equipment_list: list[ProjectEquipmentCreate] = Field(default_factory=list)
 
 
 class ProjectUpdate(BaseModel):
     is_abnormal: bool | None = None
-    equipment_category: str | None = None
-    equipment_quantity: int | None = None
-    equipment_spec: str | None = None
     end_customer: str | None = None
+    contract_number: str | None = None
+    contract_amount: float | None = None
+    contract_deposit_ratio: float | None = None
     contract_start_date: date | None = None
+    contract_effective_date: date | None = None
     contract_duration_days: int | None = None
     contract_expected_delivery_date: date | None = None
     contract_actual_delivery_days: int | None = None
@@ -242,11 +283,11 @@ class ProjectOut(BaseModel):
     end_customer: str | None = None
     template_id: uuid.UUID | None = None
 
-    equipment_category: str | None = None
-    equipment_quantity: int = 1
-    equipment_spec: str | None = None
-
+    contract_number: str | None = None
+    contract_amount: float | None = None
+    contract_deposit_ratio: float | None = None
     contract_start_date: date | None = None
+    contract_effective_date: date | None = None
     contract_duration_days: int | None = None
     contract_expected_delivery_date: date | None = None
     contract_actual_delivery_days: int | None = None
@@ -256,8 +297,11 @@ class ProjectOut(BaseModel):
 
     agreement_filename: str = ""
 
+    project_status: str = ""  # 正常|逾期|已完成 — computed by backend
+
     phases: list[ProjectPhaseOut] = Field(default_factory=list)
     assignments: list[ProjectAssignmentOut] = Field(default_factory=list)
+    equipment_list: list[ProjectEquipmentOut] = Field(default_factory=list)
 
     created_at: datetime
     updated_at: datetime

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { LoginResponse, Person } from '../types'
+import { getMyPermissions } from '../api'
 import { loadRoles, getRoleName } from '../utils/roles'
 
 export type AuthState = {
@@ -8,9 +9,12 @@ export type AuthState = {
   role: string
   roleName: string
   isLoggedIn: boolean
+  can: Record<string, boolean>
   login: (res: LoginResponse) => void
   logout: () => void
   setRole: (code: string, name: string) => void
+  hasPermission: (key: string) => boolean
+  refreshPermissions: () => Promise<void>
 }
 
 const EMPTY: AuthState = {
@@ -19,9 +23,12 @@ const EMPTY: AuthState = {
   role: '',
   roleName: '',
   isLoggedIn: false,
+  can: {},
   login: () => {},
   logout: () => {},
   setRole: () => {},
+  hasPermission: () => false,
+  refreshPermissions: async () => {},
 }
 
 const AuthContext = createContext<AuthState>(EMPTY)
@@ -53,19 +60,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState(() => loadAuth().token)
   const [role, setRoleRaw] = useState(() => loadAuth().role)
   const [roleName, setRoleName] = useState(() => loadAuth().roleName)
+  const [can, setCan] = useState<Record<string, boolean>>({})
 
   const isLoggedIn = !!person && !!token
 
   useEffect(() => { loadRoles() }, [])
 
+  const refreshPermissions = useCallback(async () => {
+    if (!token) { setCan({}); return }
+    try {
+      const perms = await getMyPermissions()
+      setCan(perms)
+    } catch { setCan({}) }
+  }, [token])
+
+  // On mount, if already logged in, fetch permissions
+  useEffect(() => {
+    if (isLoggedIn) refreshPermissions()
+  }, [isLoggedIn, refreshPermissions])
+
+  const hasPermission = useCallback((key: string) => {
+    return !!can[key]
+  }, [can])
+
   const login = useCallback((res: LoginResponse) => {
     setPerson(res.person)
     setToken(res.token)
-    const firstRole = res.person.roles[0] || ''
-    setRoleRaw(firstRole)
-    const name = getRoleName(firstRole)
+    const rc = res.person.role_code || ''
+    setRoleRaw(rc)
+    const name = getRoleName(rc)
     setRoleName(name)
-    saveAuth(res.person, res.token, firstRole, name)
+    saveAuth(res.person, res.token, rc, name)
+    // Permissions will be fetched by the useEffect triggered by isLoggedIn
   }, [])
 
   const logout = useCallback(() => {
@@ -73,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken('')
     setRoleRaw('')
     setRoleName('')
+    setCan({})
     try { localStorage.removeItem('lumi_auth') } catch { /* ignore */ }
   }, [])
 
@@ -82,10 +109,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveAuth(person, token, code, name)
   }, [person, token])
 
+  // Refresh permissions when role changes
+  useEffect(() => {
+    if (isLoggedIn && role) {
+      refreshPermissions()
+    }
+  }, [role, isLoggedIn, refreshPermissions])
+
   const value = useMemo(() => ({
-    person, token, role, roleName, isLoggedIn,
-    login, logout, setRole,
-  }), [person, token, role, roleName, isLoggedIn, login, logout, setRole])
+    person, token, role, roleName, isLoggedIn, can,
+    login, logout, setRole, hasPermission, refreshPermissions,
+  }), [person, token, role, roleName, isLoggedIn, can, login, logout, setRole, hasPermission, refreshPermissions])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

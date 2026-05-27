@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Alert, Card, Col, Empty, Row, Space, Spin, Tag, Typography } from 'antd'
+import { Card, Col, Empty, Row, Space, Tag, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
+import { WorkspaceShell } from '../../components/WorkspaceShell'
 import { useAuth } from '../../contexts/AuthContext'
 import { listProjects } from '../../api'
-import { fmtDate } from '../../utils/format'
+import { fmtDate, phaseStatusTagProps } from '../../utils/format'
 import type { Project } from '../../types'
 
 export function SoftwareWorkspace() {
@@ -28,25 +29,14 @@ export function SoftwareWorkspace() {
   }, [auth.person?.name || '', auth.role])
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          工作台 - {auth.roleName}
-        </Typography.Title>
-        <Tag color="blue">{auth.person?.name || ''}</Tag>
-      </Space>
-
-      {error ? <Alert type="error" showIcon message="请求失败" description={error} /> : null}
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
-      ) : projects.length === 0 ? (
+    <WorkspaceShell loading={loading} error={error}>
+      {projects.length === 0 ? (
         <Empty description="暂无指派给您的项目" />
       ) : (
         <Row gutter={[16, 16]}>
           {projects.map((p) => {
-            // 软件设计横跨机械设计→调机，只看 seq 1-3
-            const crossPhases = p.phases.filter((ph) => [1, 2, 3].includes(ph.seq)).sort((a, b) => a.seq - b.seq)
+            const relevantSeqs = auth.hasPermission('cross_phase_view') ? [1, 2, 3] : []
+            const crossPhases = p.phases.filter((ph) => relevantSeqs.includes(ph.seq)).sort((a, b) => a.seq - b.seq)
             return (
               <Col key={p.id} xs={24} sm={12} lg={8}>
                 <Card
@@ -54,13 +44,13 @@ export function SoftwareWorkspace() {
                   hoverable
                   onClick={() => navigate(`/projects/${p.id}`)}
                   title={<Typography.Text strong>{p.order_no}</Typography.Text>}
-                  extra={p.is_abnormal ? <Tag color="red">异常</Tag> : null}
+                  extra={(p.project_status || '正常') === '逾期' ? <Tag color="red">逾期</Tag> : null}
                 >
                   <Space direction="vertical" size={4} style={{ width: '100%' }}>
                     <Space size={4} wrap>
                       {crossPhases.map((ph) => (
-                        <Tag key={ph.seq} color={ph.status && ph.status !== '未开始' ? 'blue' : 'default'}>
-                          {ph.phase_name}{ph.sub_name ? `-${ph.sub_name}` : ''}: {ph.status || '-'}
+                        <Tag key={ph.id} color={phaseStatusTagProps(ph).color}>
+                          {ph.phase_name}: {phaseStatusTagProps(ph).text}
                         </Tag>
                       ))}
                     </Space>
@@ -74,6 +64,6 @@ export function SoftwareWorkspace() {
           })}
         </Row>
       )}
-    </Space>
+    </WorkspaceShell>
   )
 }

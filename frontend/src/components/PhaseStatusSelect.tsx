@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Select, Typography, message } from 'antd'
 import { updatePhaseStatus } from '../api'
-import { defaultStatuses } from '../utils/format'
+import { phaseStatusOptions } from '../utils/format'
 import type { ProjectPhase } from '../types'
 
 export function PhaseStatusSelect({ phase, size = 'small' }: {
@@ -15,7 +15,7 @@ export function PhaseStatusSelect({ phase, size = 'small' }: {
     setCurrent(phase.status || '')
   }, [phase.status])
 
-  const statuses = defaultStatuses(phase.phase_name)
+  const statuses = phaseStatusOptions(phase)
 
   if (statuses.length === 0) {
     if (!current) return <Typography.Text type="secondary">-</Typography.Text>

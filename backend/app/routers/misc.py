@@ -1,0 +1,172 @@
+"""Misc — /templates, /roles, /phases (global), /incidents, /assignments (global)"""
+
+from __future__ import annotations
+
+import json
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlmodel import Session, select
+
+from ..deps import deny_salesman, get_current_user, get_session, utcnow
+from ..models import PhaseIncident, PhaseTemplate, PhaseTemplateItem, ProjectAssignment, ProjectPhase, RoleDefinition
+from ..schemas import (
+    PhaseIncidentCreate,
+    PhaseIncidentOut,
+    PhaseStatusUpdate,
+    PhaseTemplateItemOut,
+    PhaseTemplateOut,
+    ProjectAssignmentOut,
+    ProjectPhaseOut,
+    RoleDefinitionOut,
+)
+from ..utils import assignment_to_out, incident_to_out, phase_to_out, role_to_out
+
+router = APIRouter(tags=["misc"])
+
+
+# ─── Templates ─────────────────────────────────────────────
+
+@router.get("/templates", response_model=list[PhaseTemplateOut])
+def list_templates(actor=Depends(get_current_user), session: Session = Depends(get_session)):
+    templates = list(session.exec(select(PhaseTemplate)))
+    out = []
+    for t in templates:
+        items = list(session.exec(select(PhaseTemplateItem).where(PhaseTemplateItem.template_id == t.id)))
+        out.append(PhaseTemplateOut(
+            id=t.id, name=t.name, description=t.description,
+            items=[PhaseTemplateItemOut(
+                id=item.id, template_id=item.template_id, seq=item.seq,
+                phase_name=item.phase_name, description=item.description,
+                sub_statuses_json=item.sub_statuses_json,
+            ) for item in sorted(items, key=lambda x: x.seq)],
+            created_at=t.created_at, updated_at=t.updated_at,
+        ))
+    return out
+
+
+# ─── Roles ─────────────────────────────────────────────────
+
+@router.get("/roles", response_model=list[RoleDefinitionOut])
+def list_roles(session: Session = Depends(get_session)):
+    return [role_to_out(r) for r in session.exec(select(RoleDefinition))]
+
+
+# ─── Phases (global) ───────────────────────────────────────
+
+@router.get("/phases", response_model=list[ProjectPhaseOut])
+def list_phases_global(
+    responsible: str | None = Query(default=None),
+    project_id: uuid.UUID | None = Query(default=None),
+    actor=Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    stmt = select(ProjectPhase)
+    if responsible:
+        stmt = stmt.where(ProjectPhase.responsible == responsible)
+    if project_id:
+        stmt = stmt.where(ProjectPhase.project_id == project_id)
+    phases = list(session.exec(stmt))
+    return [phase_to_out(ph, session) for ph in sorted(phases, key=lambda x: (x.project_id, x.seq))]
+
+
+@router.get("/phases/{phase_id}", response_model=ProjectPhaseOut)
+def get_phase(phase_id: uuid.UUID, actor=Depends(get_current_user), session: Session = Depends(get_session)):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph:
+        raise HTTPException(404, "phase not found")
+    return phase_to_out(ph, session)
+
+
+@router.patch("/phases/{phase_id}/status", response_model=ProjectPhaseOut)
+def update_phase_status(phase_id: uuid.UUID, body: PhaseStatusUpdate, actor=Depends(deny_salesman), session: Session = Depends(get_session)):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph:
+        raise HTTPException(404, "phase not found")
+    from ..models import Project
+    proj = session.get(Project, ph.project_id)
+    if proj and proj.template_id:
+            items = session.exec(
+                select(PhaseTemplateItem).where(
+                    PhaseTemplateItem.template_id == proj.template_id,
+                    PhaseTemplateItem.seq == ph.seq,
+                )
+            ).all()
+            if items and items[0].sub_statuses_json:
+                valid = json.loads(items[0].sub_statuses_json)
+                if valid and body.status not in valid:
+                    raise HTTPException(400, f"无效状态 '{body.status}'，有效选项: {valid}")
+    ph.status = body.status
+    ph.updated_at = utcnow()
+    session.add(ph)
+    return phase_to_out(ph, session)
+
+
+# ─── Incidents (global, under phases) ──────────────────────
+
+@router.get("/phases/{phase_id}/incidents", response_model=list[PhaseIncidentOut])
+def list_incidents(phase_id: uuid.UUID, actor=Depends(get_current_user), session: Session = Depends(get_session)):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph:
+        raise HTTPException(404, "phase not found")
+    return [incident_to_out(i) for i in session.exec(select(PhaseIncident).where(PhaseIncident.phase_id == phase_id))]
+
+
+@router.post("/phases/{phase_id}/incidents", response_model=PhaseIncidentOut, status_code=201)
+def add_incident(phase_id: uuid.UUID, body: PhaseIncidentCreate, actor=Depends(get_current_user), session: Session = Depends(get_session)):
+    ph = session.get(ProjectPhase, phase_id)
+    if not ph:
+        raise HTTPException(404, "phase not found")
+    # Salesman can only add incidents on phases of projects they are assigned to
+    if "salesman" in actor.roles and "admin" not in actor.roles:
+        assignment = session.exec(
+            select(ProjectAssignment).where(
+                ProjectAssignment.person_name == actor.person_name,
+                ProjectAssignment.project_id == ph.project_id,
+            )
+        ).first()
+        if not assignment:
+            raise HTTPException(403, "权限不足：销售员仅能更新自己被指派工序的事件")
+    inc = PhaseIncident(phase_id=phase_id, occurred_at=body.occurred_at, category=body.category, description=body.description)
+    session.add(inc)
+    session.flush()
+    return incident_to_out(inc)
+
+
+@router.delete("/phases/{phase_id}/incidents/{incident_id}", status_code=204)
+def delete_incident(phase_id: uuid.UUID, incident_id: uuid.UUID, actor=Depends(get_current_user), session: Session = Depends(get_session)):
+    inc = session.get(PhaseIncident, incident_id)
+    if not inc or inc.phase_id != phase_id:
+        raise HTTPException(404, "incident not found")
+    ph = session.get(ProjectPhase, phase_id)
+    # Salesman can only delete incidents on phases of projects they are assigned to
+    if "salesman" in actor.roles and "admin" not in actor.roles:
+        if not ph:
+            raise HTTPException(404, "phase not found")
+        assignment = session.exec(
+            select(ProjectAssignment).where(
+                ProjectAssignment.person_name == actor.person_name,
+                ProjectAssignment.project_id == ph.project_id,
+            )
+        ).first()
+        if not assignment:
+            raise HTTPException(403, "权限不足：销售员仅能更新自己被指派工序的事件")
+    session.delete(inc)
+
+
+# ─── Assignments (global) ──────────────────────────────────
+
+@router.get("/assignments", response_model=list[ProjectAssignmentOut])
+def list_assignments_global(
+    person_name: str | None = Query(default=None),
+    role_code: str | None = Query(default=None),
+    actor=Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    from ..models import ProjectAssignment
+    stmt = select(ProjectAssignment)
+    if person_name:
+        stmt = stmt.where(ProjectAssignment.person_name == person_name)
+    if role_code:
+        stmt = stmt.where(ProjectAssignment.role_code == role_code)
+    return [assignment_to_out(a) for a in session.exec(stmt)]

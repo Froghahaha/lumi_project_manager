@@ -1,0 +1,225 @@
+
+> frontend@0.0.0 dev
+> vite
+
+
+  [32m[1mVITE[22m v8.0.10[39m  [2mready in [0m[1m175[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m14:03:40[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Space] `direction` is deprecated. Please use `orientation` instead.
+[2m14:03:40[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Alert] `message` is deprecated. Please use `title` instead.
+[2m14:07:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: Error: {"detail":"登录已过期，请重新登录"}
+    at request (http://localhost:5173/src/api.ts:26:9)
+    at async loader (http://localhost:5173/src/router.tsx:94:22)
+    at async http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3208:14
+    at async callLoaderOrAction (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3252:19)
+    at async Promise.all (index 0)
+    at async defaultDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3009:3)
+    at async callDataStrategyImpl (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3174:16)
+    at async callDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1917:14)
+    at async callLoadersAndMaybeResolveData (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1956:19)
+    at async handleLoaders (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1627:43)
+[2m14:07:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: Error: {"detail":"登录已过期，请重新登录"}
+    at request (http://localhost:5173/src/api.ts:26:9)
+    at async loader (http://localhost:5173/src/router.tsx:94:22)
+    at async http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3208:14
+    at async callLoaderOrAction (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3252:19)
+    at async Promise.all (index 0)
+    at async defaultDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3009:3)
+    at async callDataStrategyImpl (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3174:16)
+    at async callDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1917:14)
+    at async callLoadersAndMaybeResolveData (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1956:19)
+    at async handleLoaders (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1627:43)
+[2m14:08:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: message] Static function can not consume context like dynamic theme. Please use 'App' component instead.
+[2m14:09:59[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/AfterSalesWorkspace.tsx[22m
+[2m14:10:03[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/AfterSalesWorkspace.tsx[22m
+[2m14:10:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/AfterSalesWorkspace.tsx[22m
+[2m14:12:47[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Statistic] `valueStyle` is deprecated. Please use `styles.content` instead.
+[2m14:16:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: Error: {"detail":"project not found"}
+    at request (http://localhost:5173/src/api.ts:26:9)
+    at async loader (http://localhost:5173/src/router.tsx:94:22)
+    at async http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3208:14
+    at async callLoaderOrAction (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3252:19)
+    at async Promise.all (index 0)
+    at async defaultDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3009:3)
+    at async callDataStrategyImpl (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3174:16)
+    at async callDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1917:14)
+    at async callLoadersAndMaybeResolveData (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1956:19)
+    at async handleLoaders (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1627:43)
+[2m14:16:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: Error: {"detail":"project not found"}
+    at request (http://localhost:5173/src/api.ts:26:9)
+    at async loader (http://localhost:5173/src/router.tsx:94:22)
+    at async http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3208:14
+    at async callLoaderOrAction (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3252:19)
+    at async Promise.all (index 0)
+    at async defaultDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3009:3)
+    at async callDataStrategyImpl (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:3174:16)
+    at async callDataStrategy (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1917:14)
+    at async callLoadersAndMaybeResolveData (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1956:19)
+    at async handleLoaders (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=989bdb84:1627:43)
+[2m14:21:44[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Space] `direction` is deprecated. Please use `orientation` instead.
+[2m14:23:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Space] `direction` is deprecated. Please use `orientation` instead.
+[2m15:21:23[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Space] `direction` is deprecated. Please use `orientation` instead.
+[2m15:21:23[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Alert] `message` is deprecated. Please use `title` instead.
+[2m15:21:46[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: message] Static function can not consume context like dynamic theme. Please use 'App' component instead.
+[2m15:22:37[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Statistic] `valueStyle` is deprecated. Please use `styles.content` instead.
+[2m15:22:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `salesman`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m15:22:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `salesman`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m15:46:21[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/ExecutionWorkspace.tsx[22m
+[2m15:46:23[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/ExecutionWorkspace.tsx[22m
+[2m15:46:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mThe final argument passed to useEffect changed size between renders. The order and size of this array must remain constant.
+
+Previous: [潘贻杰, tuning_executor]
+Incoming: [潘贻杰]
+[2m15:46:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/ExecutionWorkspace.tsx[22m
+[2m15:46:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: findMyPhase is not defined
+    at http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:76:22
+    at Array.map (<anonymous>)
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:75:26)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+[2m15:46:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: findMyPhase is not defined
+    at http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:76:22
+    at Array.map (<anonymous>)
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:75:26)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+[2m15:46:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: findMyPhase is not defined
+    at http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:76:22
+    at Array.map (<anonymous>)
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:75:26)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+[2m15:46:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: findMyPhase is not defined
+    at http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:76:22
+    at Array.map (<anonymous>)
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:75:26)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+[2m15:46:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReferenceError: findMyPhase is not defined
+    at http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:76:22
+    at Array.map (<anonymous>)
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:75:26)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+
+The above error occurred in the <ProjectFilterBar> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, RenderErrorBoundary.
+
+[2m15:46:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact Router caught the following error during render ReferenceError: findMyPhase is not defined
+    at http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:76:22
+    at Array.map (<anonymous>)
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779867988187:75:26)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+[2m15:46:48[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/ExecutionWorkspace.tsx[22m
+[2m15:46:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: shippedNoAgreement is not defined
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779868008213:99:60)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8309:6)
+[2m15:46:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: shippedNoAgreement is not defined
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779868008213:99:60)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8309:6)
+[2m15:46:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: shippedNoAgreement is not defined
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779868008213:99:60)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8309:6)
+[2m15:46:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: ReferenceError: shippedNoAgreement is not defined
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779868008213:99:60)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8309:6)
+[2m15:46:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReferenceError: shippedNoAgreement is not defined
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779868008213:99:60)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8309:6)
+
+The above error occurred in the <ProjectFilterBar> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, RenderErrorBoundary.
+
+[2m15:46:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact Router caught the following error during render ReferenceError: shippedNoAgreement is not defined
+    at children (http://localhost:5173/src/pages/workspaces/ExecutionWorkspace.tsx?t=1779868008213:99:60)
+    at ProjectFilterBar (http://localhost:5173/src/components/ProjectFilterBar.tsx:132:4)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:12868:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/client-DCilKyNa.js?v=989bdb84:8309:6)
+[2m15:46:53[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/ExecutionWorkspace.tsx[22m
+[2m16:00:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/workspaces/ExecutionWorkspace.tsx[22m
+[2m16:03:04[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: Space] `direction` is deprecated. Please use `orientation` instead.
+[2m16:03:13[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mWarning: [antd: message] Static function can not consume context like dynamic theme. Please use 'App' component instead.
+[2m16:03:46[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `salesman`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m16:03:46[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `salesman`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m16:10:04[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/DashboardPage.tsx, /src/pages/ProjectPage.tsx, /src/pages/workspaces/SoftwareWorkspace.tsx, /src/pages/workspaces/PMWorkspace.tsx, /src/components/ProjectTable.tsx, /src/components/PhaseProgress.tsx, /src/pages/workspaces/ExecutionWorkspace.tsx, /src/components/PhaseStatusSelect.tsx[22m

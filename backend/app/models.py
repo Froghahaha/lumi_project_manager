@@ -36,6 +36,7 @@ class PhaseTemplateItem(SQLModel, table=True):
     phase_name: str
     description: str | None = None
     sub_statuses_json: str = ""
+    terminal_statuses_json: str = ""
 
 
 class Project(SQLModel, table=True):
@@ -46,15 +47,15 @@ class Project(SQLModel, table=True):
     end_customer: str | None = None
     template_id: uuid.UUID | None = Field(default=None, foreign_key="phase_template.id")
 
-    equipment_category: str | None = None
-    equipment_quantity: int = 1
-    equipment_spec: str | None = None
-
+    contract_number: str | None = None  # 合同编号
+    contract_amount: float | None = None  # 合同金额
+    contract_deposit_ratio: float | None = None  # 首付比例阈值（合同约定）
     contract_start_date: date | None = None
+    contract_effective_date: date | None = None  # 项目生效日期（实际收款达标）
     contract_duration_days: int | None = None
     contract_expected_delivery_date: date | None = None
     contract_actual_delivery_days: int | None = None
-    contract_payment_progress: float | None = None
+    contract_payment_progress: float | None = None  # 实际收款进度
 
     is_abnormal: bool = False
 
@@ -80,6 +81,9 @@ class ProjectPhase(SQLModel, table=True):
     planned_duration: int | None = None
     actual_end_date: date | None = None
     actual_duration: int | None = None
+    is_rectify: bool = False  # 整改工序标记
+    sub_statuses_json: str = ""  # valid status options copied from template
+    terminal_statuses_json: str = ""  # JSON array of statuses that count as complete
 
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
@@ -114,18 +118,27 @@ class ProjectAssignment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
 
 
+class ProjectEquipment(SQLModel, table=True):
+    __tablename__ = "project_equipment"
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    category: str = ""
+    spec: str = ""
+    quantity: int = 1
+
+
+class PersonRole(SQLModel, table=True):
+    __tablename__ = "person_role"
+    person_id: uuid.UUID = Field(foreign_key="person.id", primary_key=True)
+    role_code: str = Field(foreign_key="role_definition.code", primary_key=True)
+
+
 class Person(SQLModel, table=True):
     __tablename__ = "person"
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str = Field(index=True, unique=True)
     department: str = ""
+    role_code: str = Field(default="", foreign_key="role_definition.code")
     password_hash: str = ""
     is_active: bool = True
     created_at: datetime = Field(default_factory=utcnow)
-
-
-class PersonRole(SQLModel, table=True):
-    __tablename__ = "person_role"
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    person_id: uuid.UUID = Field(foreign_key="person.id", index=True)
-    role_code: str = Field(foreign_key="role_definition.code")

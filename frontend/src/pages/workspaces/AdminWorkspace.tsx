@@ -1,51 +1,72 @@
 import { useEffect, useState } from 'react'
 import {
-  Alert,
   Button,
-  Card,
-  Empty,
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
-  Spin,
+  Switch,
   Table,
   Tabs,
   Tag,
-  Typography,
   message,
 } from 'antd'
+import { PlusOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../contexts/AuthContext'
 import {
+  createCustomer,
   createPerson,
+  deleteCustomer,
+  deletePerson,
+  listCustomers,
   listPersons,
   listProjects,
   listRoles,
+  resetPersonPassword,
+  togglePersonActive,
+  updateCustomer,
   updatePerson,
 } from '../../api'
-import type { Person, Project, RoleDefinition } from '../../types'
+import { useAuth } from '../../contexts/AuthContext'
+import { ProjectFilterBar } from '../../components/ProjectFilterBar'
+import { ProjectTable } from '../../components/ProjectTable'
+import { WorkspaceShell } from '../../components/WorkspaceShell'
+import type { Customer, Person, Project, RoleDefinition } from '../../types'
 
 export function AdminWorkspace() {
-  const auth = useAuth()
   const navigate = useNavigate()
+  const auth = useAuth()
+  const showPayment = auth.hasPermission('view_payment_column')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [persons, setPersons] = useState<Person[]>([])
   const [roles, setRoles] = useState<RoleDefinition[]>([])
-  const [personModal, setPersonModal] = useState(false)
+  const [customers, setCustomers] = useState<Customer[]>([])
+
+  // Customer modal state
+  const [customerOpen, setCustomerOpen] = useState(false)
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [customerSaving, setCustomerSaving] = useState(false)
+  const [customerForm] = Form.useForm()
+
+  // Person modal state
+  const [personOpen, setPersonOpen] = useState(false)
   const [editingPerson, setEditingPerson] = useState<Person | null>(null)
+  const [personSaving, setPersonSaving] = useState(false)
   const [personForm] = Form.useForm()
 
   async function load() {
     setLoading(true)
+    setError(null)
     try {
-      const [p, s, r] = await Promise.all([listProjects(), listPersons(), listRoles()])
+      const [p, s, r, c] = await Promise.all([listProjects(), listPersons(), listRoles(), listCustomers()])
       setProjects(p)
       setPersons(s)
       setRoles(r)
+      setCustomers(c)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -56,14 +77,72 @@ export function AdminWorkspace() {
 
   const overduePhases = projects.flatMap((p) =>
     p.phases
-      .filter((ph) => ph.planned_end_date && !ph.actual_end_date && new Date() > new Date(ph.planned_end_date))
+      .filter((ph) => ph.phase_progress === '逾期')
       .map((ph) => ({ ...ph, project_order_no: p.order_no, project_id: p.id }))
   )
-  const abnormalProjects = projects.filter((p) => p.is_abnormal)
   const roleMap = Object.fromEntries(roles.map((r) => [r.code, r.name]))
 
-  async function onSavePerson(values: { name: string; department: string; roles: string[] }) {
+  // ─── Customer handlers ─────────────────────────────────────
+
+  function openCustomerModal(edit?: Customer) {
+    if (edit) {
+      setEditingCustomer(edit)
+      customerForm.setFieldsValue({ code: edit.code, name: edit.name })
+    } else {
+      setEditingCustomer(null)
+      customerForm.resetFields()
+    }
+    setCustomerOpen(true)
+  }
+
+  async function onSaveCustomer() {
     try {
+      const values = await customerForm.validateFields()
+      setCustomerSaving(true)
+      if (editingCustomer) {
+        await updateCustomer(editingCustomer.id, values)
+        message.success('客户已更新')
+      } else {
+        await createCustomer(values)
+        message.success('客户已创建')
+      }
+      setCustomerOpen(false)
+      setEditingCustomer(null)
+      customerForm.resetFields()
+      setCustomers(await listCustomers())
+    } catch (e) {
+      if (e instanceof Error) message.error(e.message)
+    }
+    setCustomerSaving(false)
+  }
+
+  async function onDeleteCustomer(id: string) {
+    try {
+      await deleteCustomer(id)
+      message.success('客户已删除')
+      setCustomers(await listCustomers())
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  // ─── Person handlers ───────────────────────────────────────
+
+  function openPersonModal(edit?: Person) {
+    if (edit) {
+      setEditingPerson(edit)
+      personForm.setFieldsValue({ name: edit.name, department: edit.department, role_code: edit.role_code })
+    } else {
+      setEditingPerson(null)
+      personForm.resetFields()
+    }
+    setPersonOpen(true)
+  }
+
+  async function onSavePerson() {
+    try {
+      const values = await personForm.validateFields()
+      setPersonSaving(true)
       if (editingPerson) {
         await updatePerson(editingPerson.id, values)
         message.success('已更新')
@@ -71,124 +150,174 @@ export function AdminWorkspace() {
         await createPerson(values)
         message.success('已创建')
       }
-      setPersonModal(false)
+      setPersonOpen(false)
       setEditingPerson(null)
       personForm.resetFields()
+      await load()
+    } catch (e) {
+      if (e instanceof Error) message.error(e.message)
+    }
+    setPersonSaving(false)
+  }
+
+  async function onDeletePerson(id: string) {
+    try {
+      await deletePerson(id)
+      message.success('已删除')
       await load()
     } catch (e) {
       message.error(e instanceof Error ? e.message : String(e))
     }
   }
 
-  return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>工作台 - {auth.roleName}</Typography.Title>
-        <Space size={8}>
-          <Tag color="blue">项目 {projects.length}</Tag>
-          <Tag color="purple">人员 {persons.length}</Tag>
-          {overduePhases.length > 0 && <Tag color="red">逾期 {overduePhases.length}</Tag>}
-        </Space>
-      </Space>
-      {error ? <Alert type="error" showIcon message="请求失败" description={error} /> : null}
+  async function onResetPassword(id: string) {
+    try {
+      const res = await resetPersonPassword(id, '123456')
+      message.success(`密码已重置为: ${res.password}`)
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : String(e))
+    }
+  }
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60 }}><Spin size="large" /></div>
-      ) : (
-        <Tabs items={[
+  async function onTogglePersonActive(id: string, active: boolean) {
+    try {
+      await togglePersonActive(id, active)
+      message.success(active ? '已启用' : '已停用')
+      setPersons((prev) => prev.map((p) => (p.id === id ? { ...p, is_active: active } : p)))
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  // ─── Render ────────────────────────────────────────────────
+
+  const stats = (
+    <><Tag color="blue">项目 {projects.length}</Tag><Tag color="purple">人员 {persons.length}</Tag>
+    <Tag color="cyan">客户 {customers.length}</Tag>
+    {overduePhases.length > 0 && <Tag color="red">逾期 {overduePhases.length}</Tag>}</>
+  )
+
+  return (
+    <WorkspaceShell loading={loading} error={error} extra={stats}>
+      <Tabs items={[
           {
             key: 'overview', label: '项目总览',
             children: (
-              <Table<Project>
-                rowKey="id" dataSource={projects} size="small" pagination={{ pageSize: 15 }}
+              <ProjectFilterBar projects={projects}>
+                {(filtered) => (
+              <ProjectTable
+                projects={filtered}
+                columns={['order_no', 'equipment', 'end_customer', 'status', 'payment', 'phases']}
+                showPayment={showPayment}
+                endCustomerInline={false}
                 onRow={(r) => ({ onClick: () => navigate(`/projects/${r.id}`), style: { cursor: 'pointer' } })}
-                columns={[
-                  { title: '项目', dataIndex: 'order_no', sorter: (a, b) => a.order_no.localeCompare(b.order_no) },
-                  { title: '设备', render: (_, p) => <Tag>{p.equipment_category || '-'}</Tag> },
-                  { title: '终端', dataIndex: 'end_customer', render: (v: string | null) => v || '-' },
-                  { title: '状态', dataIndex: 'is_abnormal', render: (v: boolean) => v ? <Tag color="red">异常</Tag> : <Tag color="green">正常</Tag> },
-                  { title: '工序', key: 'phases', render: (_, p) => (
-                    <Space size={2}>{p.phases.slice(0, 5).map((ph) => (
-                      <Tag key={ph.seq} color={ph.status && ph.status !== '未开始' ? 'blue' : 'default'} style={{ fontSize: 10, padding: '0 4px' }}>
-                        {ph.sub_name || ph.phase_name[0]}
-                      </Tag>
-                    ))}</Space>
-                  )},
-                ]}
               />
+                )}
+              </ProjectFilterBar>
             ),
           },
           {
-            key: 'warnings', label: `预警 (${overduePhases.length + abnormalProjects.length})`,
+            key: 'customers', label: `客户管理 (${customers.length})`,
             children: (
-              <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                {abnormalProjects.length > 0 && (
-                  <Card size="small" title="异常项目" type="inner">
-                    <Space wrap>{abnormalProjects.map((p) => (
-                      <Tag key={p.id} color="red" style={{ cursor: 'pointer' }} onClick={() => navigate(`/projects/${p.id}`)}>{p.order_no}</Tag>
-                    ))}</Space>
-                  </Card>
-                )}
-                {overduePhases.length > 0 ? (
-                  <Card size="small" title="逾期工序" type="inner">
-                    <Table rowKey="id" dataSource={overduePhases} size="small" pagination={false}
-                      columns={[
-                        { title: '项目', dataIndex: 'project_order_no', render: (v: string, r: { project_id: string }) => <a onClick={() => navigate(`/projects/${r.project_id}`)}>{v}</a> },
-                        { title: '工序', dataIndex: 'phase_name' },
-                        { title: '计划完成', dataIndex: 'planned_end_date', render: (v: string) => v?.slice(0, 10) || '-' },
-                      ]}
-                    />
-                  </Card>
-                ) : <Empty description="暂无预警" />}
-              </Space>
+              <div>
+                <div style={{ marginBottom: 8, textAlign: 'right' }}>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => openCustomerModal()}>添加客户</Button>
+                </div>
+                <Table<Customer>
+                  rowKey="id" dataSource={customers} size="small" pagination={{ pageSize: 15 }}
+                  columns={[
+                    { title: '客户简称', dataIndex: 'code', sorter: (a, b) => a.code.localeCompare(b.code), width: 120 },
+                    { title: '客户全称', dataIndex: 'name', render: (v: string) => v || '-' },
+                    { title: '创建时间', dataIndex: 'created_at', render: (v: string) => v ? v.slice(0, 10) : '-' },
+                    { title: '操作', key: 'actions', width: 150, render: (_, c) => (
+                      <Space size={0}>
+                        <Button size="small" type="link" onClick={() => openCustomerModal(c)}>编辑</Button>
+                        <Popconfirm title={`确认删除客户 ${c.code}?`} onConfirm={() => onDeleteCustomer(c.id)}>
+                          <Button size="small" type="link" danger>删除</Button>
+                        </Popconfirm>
+                      </Space>
+                    )},
+                  ]}
+                />
+              </div>
             ),
           },
           {
             key: 'persons', label: `人员管理 (${persons.length})`,
-            extra: <Button size="small" onClick={() => { setEditingPerson(null); personForm.resetFields(); setPersonModal(true) }}>+ 人员</Button>,
             children: (
-              <Table<Person>
-                rowKey="id" dataSource={persons} size="small" pagination={{ pageSize: 15 }}
-                columns={[
-                  { title: '姓名', dataIndex: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
-                  { title: '部门', dataIndex: 'department', render: (v: string) => v || '-' },
-                  { title: '角色', key: 'roles', render: (_, p) => (
-                    <Space size={2}>{p.roles.map((rc) => <Tag key={rc} style={{ fontSize: 11 }}>{roleMap[rc] || rc}</Tag>)}</Space>
-                  )},
-                  { title: '状态', dataIndex: 'is_active', render: (v: boolean) => v ? <Tag color="green">启用</Tag> : <Tag color="default">停用</Tag> },
-                  { title: '操作', key: 'actions', render: (_, p) => (
-                    <Button size="small" type="link" onClick={() => {
-                      setEditingPerson(p)
-                      personForm.setFieldsValue({ name: p.name, department: p.department, roles: p.roles })
-                      setPersonModal(true)
-                    }}>编辑</Button>
-                  )},
-                ]}
-              />
+              <div>
+                <div style={{ marginBottom: 8, textAlign: 'right' }}>
+                  <Button size="small" icon={<PlusOutlined />} onClick={() => openPersonModal()}>添加人员</Button>
+                </div>
+                <Table<Person>
+                  rowKey="id" dataSource={persons} size="small" pagination={{ pageSize: 15 }}
+                  columns={[
+                    { title: '姓名', dataIndex: 'name', sorter: (a, b) => a.name.localeCompare(b.name) },
+                    { title: '部门', dataIndex: 'department', render: (v: string) => v || '-' },
+                    { title: '角色', key: 'role_code', render: (_, p) => (
+                      <Tag style={{ fontSize: 11 }}>{roleMap[p.role_code] || p.role_code || '-'}</Tag>
+                    )},
+                    { title: '启用', key: 'is_active', width: 60, render: (_, p) => (
+                      <Switch size="small" checked={p.is_active} onChange={(v) => onTogglePersonActive(p.id, v)} />
+                    )},
+                    { title: '操作', key: 'actions', width: 220, render: (_, p) => (
+                      <Space size={0}>
+                        <Button size="small" type="link" onClick={() => openPersonModal(p)}>编辑</Button>
+                        <Popconfirm title={`重置 ${p.name} 的密码?`} onConfirm={() => onResetPassword(p.id)}>
+                          <Button size="small" type="link">密码</Button>
+                        </Popconfirm>
+                        <Popconfirm title={`确认删除 ${p.name}?`} onConfirm={() => onDeletePerson(p.id)}>
+                          <Button size="small" type="link" danger>删除</Button>
+                        </Popconfirm>
+                      </Space>
+                    )},
+                  ]}
+                />
+              </div>
             ),
           },
         ]} />
-      )}
+
+      {/* Customer Modal */}
+      <Modal
+        open={customerOpen}
+        title={editingCustomer ? '编辑客户' : '添加客户'}
+        onCancel={() => { setCustomerOpen(false); setEditingCustomer(null); customerForm.resetFields() }}
+        onOk={onSaveCustomer}
+        confirmLoading={customerSaving}
+        destroyOnClose
+      >
+        <Form form={customerForm} layout="vertical">
+          <Form.Item name="code" label="客户简称" rules={[{ required: true, message: '请输入客户简称' }]}>
+            <Input placeholder="如 ZJDGM" autoFocus />
+          </Form.Item>
+          <Form.Item name="name" label="客户全称" rules={[{ required: true, message: '请输入客户全称' }]}>
+            <Input placeholder="如 浙江东格马" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* Person Modal */}
       <Modal
-        open={personModal}
+        open={personOpen}
         title={editingPerson ? '编辑人员' : '添加人员'}
-        onCancel={() => { setPersonModal(false); setEditingPerson(null) }}
-        onOk={() => personForm.submit()}
+        onCancel={() => { setPersonOpen(false); setEditingPerson(null); personForm.resetFields() }}
+        onOk={onSavePerson}
+        confirmLoading={personSaving}
+        destroyOnClose
       >
-        <Form form={personForm} layout="vertical" onFinish={onSavePerson}>
-          <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
-            <Input placeholder="王文哲" />
+        <Form form={personForm} layout="vertical">
+          <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
+            <Input placeholder="王文哲" autoFocus />
           </Form.Item>
           <Form.Item name="department" label="部门">
             <Input placeholder="技术部" />
           </Form.Item>
-          <Form.Item name="roles" label="角色" rules={[{ required: true }]}>
-            <Select mode="multiple" options={roles.map((r) => ({ label: r.name, value: r.code }))} />
+          <Form.Item name="role_code" label="角色" rules={[{ required: true, message: '请选择角色' }]}>
+            <Select options={roles.map((r) => ({ label: r.name, value: r.code }))} />
           </Form.Item>
         </Form>
       </Modal>
-    </Space>
+    </WorkspaceShell>
   )
 }
