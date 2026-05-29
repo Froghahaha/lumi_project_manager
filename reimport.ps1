@@ -38,9 +38,11 @@ if (Test-Path $Db) {
 
 Write-Host "=== 导入数据: $Xlsx ===" -ForegroundColor Cyan
 Set-Location $ScriptDir
+$env:PYTHONPATH = $ScriptDir
 & $Python -m backend.scripts.import_legacy $Xlsx
 
 Write-Host "=== 重启后端 ===" -ForegroundColor Cyan
+$env:PYTHONPATH = $ScriptDir
 Start-Process -NoNewWindow $Python -ArgumentList "-m", "uvicorn", "backend.app.main:app", "--port", "8000"
 Start-Sleep -Seconds 4
 

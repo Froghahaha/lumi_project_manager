@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from ..deps import AGREEMENT_DIR, deny_salesman, get_current_user, get_session, require_permission, utcnow
 from ..db import PRODUCTION_TEMPLATE_ID
+from ..phase_lifecycle import get_init_status
 from ..models import (
     Customer,
     PhaseIncident,
@@ -178,7 +179,8 @@ def create_project(
             ).first()
             if tail:
                 tail.responsible = a.person_name
-                tail.status = '进行中'
+                from ...phase_lifecycle import get_init_status
+                tail.status = get_init_status(5)
                 session.add(tail)
 
     session.flush()
@@ -395,6 +397,16 @@ def add_assignment(project_id: uuid.UUID, body: ProjectAssignmentCreate, actor=D
     role = session.get(RoleDefinition, body.role_code)
     if not role:
         raise HTTPException(400, f"invalid role_code: {body.role_code}")
+    # Check actor has permission to assign this role
+    import json
+    if 'admin' not in actor.roles:
+        allowed_roles = set()
+        for actor_role_code in actor.roles:
+            actor_role = session.get(RoleDefinition, actor_role_code)
+            if actor_role and actor_role.assigns_json:
+                allowed_roles.update(json.loads(actor_role.assigns_json))
+        if allowed_roles and body.role_code not in allowed_roles:
+            raise HTTPException(403, f"无权指派角色: {body.role_code}")
     ph_id = uuid.UUID(body.phase_id) if body.phase_id else None
     if ph_id:
         ph = session.get(ProjectPhase, ph_id)

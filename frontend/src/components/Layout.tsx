@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Button, Layout as AntLayout, Menu, Space, Tag, Typography } from 'antd'
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 function RoleSelector() {
@@ -19,6 +19,7 @@ function RoleSelector() {
 
 export function Layout() {
   const location = useLocation()
+  const navigate = useNavigate()
   const auth = useAuth()
   const menuItems = useMemo(() => {
     const items = [
@@ -53,7 +54,8 @@ export function Layout() {
       </AntLayout.Sider>
 
       <AntLayout>
-        <AntLayout.Header style={{ display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'flex-end' }}>
+        <AntLayout.Header style={{ display: 'flex', alignItems: 'center', padding: '0 16px', justifyContent: 'space-between' }}>
+          <Button type="text" style={{ color: 'rgba(255,255,255,0.65)' }} onClick={() => navigate(-1)}>← 返回</Button>
           <RoleSelector />
         </AntLayout.Header>
         <AntLayout.Content style={{ padding: 16 }}>

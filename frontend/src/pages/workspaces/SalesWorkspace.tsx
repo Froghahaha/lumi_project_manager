@@ -76,7 +76,7 @@ export function SalesWorkspace() {
   async function load() {
     setLoading(true)
     try {
-      const [p, t, c, s] = await Promise.all([listProjects({ assigned_person: auth.person?.name }), listTemplates(), listCustomers(), listPersons('salesman')])
+      const [p, t, c, s] = await Promise.all([listProjects(), listTemplates(), listCustomers(), listPersons('salesman')])
       setProjects(p)
       setTemplates(t)
       setCustomers(c)
@@ -97,6 +97,7 @@ export function SalesWorkspace() {
     template_id: string; end_customer: string; salesman_name: string
     equipment_list: { category: string; spec: string; quantity: number }[]
     contract_deposit_ratio: number; contract_start_date: dayjs.Dayjs | null; contract_duration_days: number
+    payment_due_type: string; payment_due_days: number
   }) {
     if (!canEdit || !selectedCustomer || !nextSeq) return
     setCreating(true)
@@ -117,6 +118,8 @@ export function SalesWorkspace() {
         template_id: values.template_id,
         contract_start_date: values.contract_start_date?.format('YYYY-MM-DD') ?? null,
         contract_duration_days: values.contract_duration_days || null,
+        payment_due_type: values.payment_due_type || null,
+        payment_due_days: values.payment_due_days || null,
         equipment_list: equip,
         assignments,
       })
@@ -325,7 +328,7 @@ export function SalesWorkspace() {
               <Form.List name="equipment_list" initialValue={[{ category: '', spec: '', quantity: 1 }]}>
                 {(fields, { add, remove }) => (
                   <div style={{ marginBottom: 8 }}>
-                    {fields.map(({ key, name, ...restField }, index) => (
+                    {fields.map(({ key, name, ...restField }, _idx) => (
                       <div key={key} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 6 }}>
                         <Form.Item {...restField} name={[name, 'category']} rules={[{ required: true, message: '必填' }]} style={{ margin: 0, flex: 1 }}>
                           <Select placeholder="机型" size="small" options={EQUIP_CATEGORIES.map((c) => ({ label: c, value: c }))} />
@@ -358,6 +361,16 @@ export function SalesWorkspace() {
               </Space>
               <Form.Item name="contract_start_date" label="立项日期">
                 <DatePicker locale={zhCNDatePicker} format="YYYY-MM-DD" style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="payment_due_type" label="尾款开始征收条件">
+                <Select allowClear placeholder="选择合同约定的前置条件" options={[
+                  { label: '验收完成', value: 'after_acceptance' },
+                  { label: '已发货', value: 'after_shipping' },
+                  { label: '安调完成', value: 'after_tuning' },
+                ]} />
+              </Form.Item>
+              <Form.Item name="payment_due_days" label="尾款到期天数">
+                <InputNumber min={1} style={{ width: '100%' }} placeholder="合同约定的天数" />
               </Form.Item>
               <Form.Item label="技术协议">
                 <Upload

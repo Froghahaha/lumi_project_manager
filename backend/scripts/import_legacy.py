@@ -48,6 +48,7 @@ from app.models import (  # noqa: E402
     ProjectPhase,
 )
 from app.utils import hash_password  # noqa: E402
+from app.phase_lifecycle import get_init_status  # noqa: E402
 from sqlmodel import Session, select  # noqa: E402
 
 # ─── Constants ─────────────────────────────────────────────
@@ -56,6 +57,24 @@ PLACEHOLDER_NAMES = {'项目经理', '销售人员', '项目负责人', '/', ''}
 
 PHASE_NAMES = ['机械设计', '生产', '调机', '验收', '尾款']
 PHASE_SEQ = {name: i + 1 for i, name in enumerate(PHASE_NAMES)}
+
+# G column -> phase name mapping (column G labels the phase type per row)
+G_TO_PHASE: dict[str, str] = {
+    '设计': '机械设计',
+    '生产': '生产',
+    '调机派遣': '调机',
+    '验收': '验收',
+    '尾款': '尾款',
+}
+
+# G column -> executor role
+G_TO_ROLE: dict[str, str] = {
+    '设计': 'mechanical_designer',
+    '生产': 'production_executor',
+    '调机派遣': '',  # 此行人不指派 — 验收行的人同时负责调机+验收
+    '验收': 'acceptance_executor',
+    '尾款': '',
+}
 
 # Terminal status when actual_end_date is present (M column has value)
 PHASE_COMPLETED_STATUS: dict[int, str] = {
@@ -293,24 +312,17 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
             except (ValueError, TypeError):
                 pass
 
-        # Collect persons — H column per phase row + D3(salesman) + D5(PM)
-        phase_executor_role: dict[int, str] = {
-            0: 'mechanical_designer',  # H2 → 机械设计
-            1: 'production_executor',   # H3 → 生产
-            2: 'tuning_executor',       # H4 → 调机
-            3: 'acceptance_executor',   # H5 → 验收
-            4: 'salesman',              # H6 → 尾款 (often =D3)
-        }
-        executors: list[dict] = []  # {role_code, person_name, seq}
-        for i, role_code in phase_executor_role.items():
-            r = base + i
-            val = ws.cell(row=r, column=8).value  # H column
-            if val:
-                name = str(val).strip()
-                if name and not name.startswith('=') and name not in PLACEHOLDER_NAMES:
-                    executors.append({'role_code': role_code, 'person_name': name, 'seq': i + 1})
-                    persons_set.setdefault(name, set()).add(role_code)
+        # F4 = 预计交期, F5 = 实际交期
+        expected_delivery = parse_date(ws.cell(row=base + 2, column=6).value)
+        actual_delivery_days = None
+        ad_raw = ws.cell(row=base + 3, column=6).value
+        if ad_raw is not None and not (isinstance(ad_raw, str) and ad_raw.startswith('=')):
+            try:
+                actual_delivery_days = int(ad_raw)
+            except (ValueError, TypeError):
+                pass
 
+        # Collect persons from D3(salesman) and D5(PM)
         salesman = ws.cell(row=base + 1, column=4).value
         salesman = None if (not salesman or str(salesman).strip() in PLACEHOLDER_NAMES or str(salesman).startswith('=')) else str(salesman).strip()
         if salesman:
@@ -321,17 +333,53 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
         if pm:
             persons_set.setdefault(pm, set()).add('project_manager')
 
-        # Parse phases
+        # Parse phases from G+H columns (supports multi-phase projects)
         phases: list[dict] = []
+        executors: list[dict] = []
         year = contract_start.year if contract_start else 2024
-        for i, phase_name in enumerate(PHASE_NAMES):
+        phase_counters: dict[str, int] = {}
+
+        for i in range(5):
             r = base + i
-            seq = i + 1
-            # Start: try I(col 9) first, then J(col 10)
+            g_val = ws.cell(row=r, column=7).value
+            if not g_val:
+                continue
+            g_name = str(g_val).strip()
+            phase_name = G_TO_PHASE.get(g_name, g_name)
+            if phase_name not in PHASE_SEQ:
+                continue
+
+            phase_counters[phase_name] = phase_counters.get(phase_name, 0) + 1
+            count = phase_counters[phase_name]
+            base_seq = PHASE_SEQ[phase_name]
+            seq = base_seq
+            sub_name = ''
+            if count > 1:
+                sub_name = f'{phase_name}{count}'
+
+            # H column: executor
+            h_val = ws.cell(row=r, column=8).value
+            if h_val:
+                h_name = str(h_val).strip()
+                if h_name and not h_name.startswith('=') and h_name not in PLACEHOLDER_NAMES:
+                    if g_name == '调机派遣':
+                        pass  # 调机派遣行的人不指派
+                    elif g_name == '验收':
+                        # 验收行的人同时负责调机和验收两个工序
+                        executors.append({'role_code': 'tuning_executor', 'person_name': h_name, '_row': i, '_match_phase': '调机'})
+                        executors.append({'role_code': 'acceptance_executor', 'person_name': h_name, '_row': i})
+                        persons_set.setdefault(h_name, set()).update(['tuning_executor', 'acceptance_executor'])
+                    elif role_code := G_TO_ROLE.get(g_name, ''):
+                        executors.append({'role_code': role_code, 'person_name': h_name, '_row': i})
+                        persons_set.setdefault(h_name, set()).add(role_code)
+                    else:
+                        executors.append({'role_code': '', 'person_name': h_name, '_row': i, 'no_role': True})
+
+            # Dates
             start = parse_date(ws.cell(row=r, column=9).value) or parse_date(ws.cell(row=r, column=10).value)
-            planned = parse_date(ws.cell(row=r, column=11).value)  # K
-            actual = parse_date(ws.cell(row=r, column=13).value)   # M
-            duration_raw = ws.cell(row=r, column=12).value         # L — planned_duration
+            planned = parse_date(ws.cell(row=r, column=11).value)
+            actual = parse_date(ws.cell(row=r, column=13).value)
+            duration_raw = ws.cell(row=r, column=12).value
             planned_duration = None
             if duration_raw is not None and not (isinstance(duration_raw, str) and duration_raw.startswith('=')):
                 try:
@@ -355,11 +403,13 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                     actual_duration = int(ad_raw)
                 except (ValueError, TypeError):
                     pass
-            # M column: if actual_end_date present → phase is completed
-            status = PHASE_COMPLETED_STATUS.get(seq, '') if actual else ''
+            # M column: if actual_end_date present → phase is completed (尾款 always 进行中)
+            status = '进行中' if seq == 5 else (PHASE_COMPLETED_STATUS.get(seq, '') if actual else '')
             phases.append({
+                '_idx': len(phases),
                 'seq': seq,
                 'phase_name': phase_name,
+                'sub_name': sub_name,
                 'status': status,
                 'start_date': start,
                 'planned_end_date': planned,
@@ -383,6 +433,8 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
             'equipment': equipment,
             'contract_start_date': contract_start,
             'contract_duration_days': contract_days,
+            'contract_expected_delivery_date': expected_delivery,
+            'contract_actual_delivery_days': actual_delivery_days,
             'contract_payment_progress': payment,
             'phases': phases,
             'assignments': [
@@ -392,10 +444,7 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
             ],
         })
 
-    # After-sales personnel also get acceptance_executor role
-    for pname, roles in persons_set.items():
-        if 'tuning_executor' in roles:
-            roles.add('acceptance_executor')
+    # Roles assigned per G column above
 
     print(f'Parsed {len(projects_data)} projects')
     print(f'Unique customers: {len(customers_set)}')
@@ -480,6 +529,8 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                 template_id=PRODUCTION_TEMPLATE_ID,
                 contract_start_date=pd['contract_start_date'],
                 contract_duration_days=pd['contract_duration_days'],
+                contract_expected_delivery_date=pd.get('contract_expected_delivery_date'),
+                contract_actual_delivery_days=pd.get('contract_actual_delivery_days'),
                 contract_payment_progress=pd['contract_payment_progress'],
                 is_abnormal=pd['is_abnormal'],
             )
@@ -496,9 +547,8 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                 ))
 
             # Phases + Incidents
-            phase_map: dict[int, uuid.UUID] = {}
+            phases_by_row: dict[int, uuid.UUID] = {}  # _row -> phase_id
             for ph_data in pd['phases']:
-                # Find matching template item
                 tmpl_item = next(
                     (ti for ti in template_items if ti.seq == ph_data['seq']), None
                 )
@@ -506,6 +556,7 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                     project_id=proj.id,
                     seq=ph_data['seq'],
                     phase_name=ph_data['phase_name'],
+                    sub_name=ph_data.get('sub_name', ''),
                     status=ph_data.get('status', ''),
                     start_date=ph_data['start_date'],
                     planned_end_date=ph_data['planned_end_date'],
@@ -515,7 +566,7 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                 )
                 session.add(ph)
                 session.flush()
-                phase_map[ph_data['seq']] = ph.id
+                phases_by_row[ph_data['_idx']] = ph.id
 
                 for inc in ph_data['incidents']:
                     session.add(PhaseIncident(
@@ -531,16 +582,28 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                 if not a:
                     continue
                 pname = a['person_name']
-                role_code = a['role_code']
+                role_code = a.get('role_code', '')
                 if not pname or pname not in person_map:
                     continue
-                ph_id = phase_map.get(a.get('seq')) if a.get('seq') else None
-                session.add(ProjectAssignment(
-                    project_id=proj.id,
-                    person_name=pname,
-                    role_code=role_code,
-                    phase_id=ph_id,
-                ))
+                if a.get('no_role'):
+                    continue
+                # Match by _row; for _match_phase, find the row of that phase type
+                row = a.get('_row')
+                if a.get('_match_phase'):
+                    # Find the row index where this phase type was parsed
+                    target = a['_match_phase']
+                    for ph_data in pd['phases']:
+                        if ph_data['phase_name'] == target:
+                            row = ph_data['_idx']
+                            break
+                ph_id = phases_by_row.get(row) if row is not None else None
+                if ph_id or row is None:
+                    session.add(ProjectAssignment(
+                        project_id=proj.id,
+                        person_name=pname,
+                        role_code=role_code,
+                        phase_id=ph_id,
+                    ))
 
             created += 1
 

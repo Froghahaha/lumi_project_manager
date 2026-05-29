@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,13 +15,12 @@ from ..schemas import (
     PhaseIncidentCreate,
     PhaseIncidentOut,
     PhaseStatusUpdate,
-    PhaseTemplateItemOut,
     PhaseTemplateOut,
     ProjectAssignmentOut,
     ProjectPhaseOut,
     RoleDefinitionOut,
 )
-from ..utils import assignment_to_out, incident_to_out, phase_to_out, role_to_out
+from ..utils import assignment_to_out, incident_to_out, phase_to_out, role_to_out, template_to_out
 
 router = APIRouter(tags=["misc"])
 
@@ -30,19 +30,9 @@ router = APIRouter(tags=["misc"])
 @router.get("/templates", response_model=list[PhaseTemplateOut])
 def list_templates(actor=Depends(get_current_user), session: Session = Depends(get_session)):
     templates = list(session.exec(select(PhaseTemplate)))
-    out = []
-    for t in templates:
-        items = list(session.exec(select(PhaseTemplateItem).where(PhaseTemplateItem.template_id == t.id)))
-        out.append(PhaseTemplateOut(
-            id=t.id, name=t.name, description=t.description,
-            items=[PhaseTemplateItemOut(
-                id=item.id, template_id=item.template_id, seq=item.seq,
-                phase_name=item.phase_name, description=item.description,
-                sub_statuses_json=item.sub_statuses_json,
-            ) for item in sorted(items, key=lambda x: x.seq)],
-            created_at=t.created_at, updated_at=t.updated_at,
-        ))
-    return out
+    return [template_to_out(t, list(session.exec(
+        select(PhaseTemplateItem).where(PhaseTemplateItem.template_id == t.id)
+    ))) for t in templates]
 
 
 # ─── Roles ─────────────────────────────────────────────────
@@ -99,6 +89,21 @@ def update_phase_status(phase_id: uuid.UUID, body: PhaseStatusUpdate, actor=Depe
     ph.status = body.status
     ph.updated_at = utcnow()
     session.add(ph)
+
+    # 验收完成 → 自动启动尾款工序
+    if ph.seq == 4 and body.status == '已验收':
+        from datetime import date as dt_date
+        tail = session.exec(
+            select(ProjectPhase).where(
+                ProjectPhase.project_id == ph.project_id,
+                ProjectPhase.seq == 5,
+            )
+        ).first()
+        if tail and not tail.start_date:
+            tail.start_date = dt_date.today()
+            tail.status = '进行中'
+            session.add(tail)
+
     return phase_to_out(ph, session)
 
 
@@ -127,7 +132,7 @@ def add_incident(phase_id: uuid.UUID, body: PhaseIncidentCreate, actor=Depends(g
         ).first()
         if not assignment:
             raise HTTPException(403, "权限不足：销售员仅能更新自己被指派工序的事件")
-    inc = PhaseIncident(phase_id=phase_id, occurred_at=body.occurred_at, category=body.category, description=body.description)
+    inc = PhaseIncident(phase_id=phase_id, occurred_at=body.occurred_at or date.today(), category=body.category or '现状描述', description=body.description)
     session.add(inc)
     session.flush()
     return incident_to_out(inc)

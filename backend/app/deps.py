@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import time
 import uuid
 from datetime import datetime, timezone
@@ -14,7 +16,10 @@ from .db import session_scope
 
 # ─── Upload paths ──────────────────────────────────────────
 
-UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
+if getattr(sys, 'frozen', False):
+    UPLOAD_DIR = Path(sys.executable).parent / "uploads"
+else:
+    UPLOAD_DIR = Path(__file__).resolve().parents[2] / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 AGREEMENT_DIR = UPLOAD_DIR / "agreements"
 AGREEMENT_DIR.mkdir(parents=True, exist_ok=True)

@@ -69,6 +69,46 @@ export function phaseStatusTagProps(ph: { status?: string; terminal_statuses_jso
   return { text: s, color: 'processing' }
 }
 
+
+// ─── Phase days display ────────────────────────────────────
+// Returns countdown to planned_end_date or days elapsed if overdue.
+//   -N天 (正常)  -3天 (预警黄色)  +N天 (逾期红色)
+
+export function phaseDaysDisplay(ph: {
+  start_date?: string | null
+  planned_end_date?: string | null
+  actual_end_date?: string | null
+  status?: string
+  phase_progress?: string
+}): { text: string; color: string } | null {
+  if (!ph.start_date) return null
+  if (ph.phase_progress === '已完成') {
+    const endStr = ph.actual_end_date || ph.planned_end_date || ph.start_date
+    const end = new Date(endStr)
+    end.setHours(0, 0, 0, 0)
+    const start = new Date(ph.start_date!)
+    start.setHours(0, 0, 0, 0)
+    const days = Math.round((end.getTime() - start.getTime()) / 86400000)
+    return { text: days > 0 ? days + '天' : '-', color: 'rgba(0,0,0,0.25)' }
+  }
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (ph.planned_end_date) {
+    const end = new Date(ph.planned_end_date)
+    end.setHours(0, 0, 0, 0)
+    const diff = Math.round((end.getTime() - today.getTime()) / 86400000)
+    if (diff < 0) return { text: `+${Math.abs(diff)}天`, color: 'red' }
+    if (diff <= 3) return { text: `-${diff}天`, color: '#faad14' }  // yellow
+    return { text: `-${diff}天`, color: '#1677ff' }  // blue
+  }
+  // No planned_end_date — show days since start
+  const start = new Date(ph.start_date)
+  start.setHours(0, 0, 0, 0)
+  const elapsed = Math.round((today.getTime() - start.getTime()) / 86400000)
+  return { text: `${elapsed}天`, color: '#666' }
+}
+
+
 // ─── Project-level status derived from phases ─────────────
 
 export type ProjectSummaryStatus = '正常' | '逾期' | '已完成'

@@ -13,7 +13,7 @@ type Props = {
   phaseId: string | null
   assignments: AssignmentItem[]
   onChange: () => void
-  size?: 'small' | 'default'
+  size?: 'small' | 'middle'
 }
 
 export function AssignmentPicker({ projectId, roleCode, roleName, phaseId, assignments, onChange, size = 'small' }: Props) {

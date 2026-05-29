@@ -129,6 +129,7 @@ export function ProjectTable({
   onRow,
   rowKey = 'id',
 }: ProjectTableProps) {
+  void showEndCustomerColumn
   const resolvedColumns: ColumnType<Project>[] = []
 
   for (const key of columnKeys) {

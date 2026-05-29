@@ -7,3 +7,6 @@ backend/app/__pycache__/*
 data.db
 .vite/
 __pycache__/
+frontend/build/*
+*.zip
+dist/*

@@ -41,6 +41,10 @@ export type Project = {
 
   is_abnormal: boolean
 
+  payment_due_type: string | null
+  payment_due_days: number | null
+  payment_due_date: string | null
+
   agreement_filename: string
 
   project_status: string  // 正常|逾期|已完成 — computed by backend

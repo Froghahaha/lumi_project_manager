@@ -11,7 +11,7 @@ import type {
 
 const API_BASE = 'http://localhost:8000'
 
-function getAuthHeaders() {
+function getAuthHeaders(): Record<string, string> {
   try {
     const raw = localStorage.getItem('lumi_auth')
     if (raw) {
@@ -76,6 +76,8 @@ export async function createProject(input: {
   contract_expected_delivery_date?: string | null
   contract_actual_delivery_days?: number | null
   contract_payment_progress?: number | null
+  payment_due_type?: string | null
+  payment_due_days?: number | null
   is_abnormal?: boolean
   phases?: {
     seq: number
@@ -126,6 +128,7 @@ export async function addPhase(
     start_date?: string | null
     planned_end_date?: string | null
     incidents?: { occurred_at: string; category: string; description: string }[]
+    is_rectify?: boolean
   },
 ): Promise<ProjectPhase> {
   return request<ProjectPhase>(`/projects/${projectId}/phases`, {

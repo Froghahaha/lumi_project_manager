@@ -70,8 +70,8 @@ class PhaseTemplateOut(BaseModel):
 # ============================================================
 
 class PhaseIncidentCreate(BaseModel):
-    occurred_at: date
-    category: str = ""
+    occurred_at: date | None = None  # defaults to today if not provided
+    category: str = "现状描述"  # 现状描述 | 逾期原因
     description: str
 
 
@@ -254,6 +254,8 @@ class ProjectCreate(BaseModel):
     contract_expected_delivery_date: date | None = None
     contract_actual_delivery_days: int | None = None
     contract_payment_progress: float | None = None
+    payment_due_type: str | None = None
+
 
     is_abnormal: bool = False
 
@@ -293,7 +295,10 @@ class ProjectOut(BaseModel):
     contract_actual_delivery_days: int | None = None
     contract_payment_progress: float | None = None
 
+
     is_abnormal: bool = False
+
+    payment_due_date: str | None = None  # computed
 
     agreement_filename: str = ""
 
