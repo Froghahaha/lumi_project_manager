@@ -2,6 +2,7 @@ import type {
   Customer,
   LoginResponse,
   Person,
+  PhaseIncident,
   PhaseTemplate,
   Project,
   ProjectAssignment,
@@ -162,12 +163,31 @@ export async function deletePhase(projectId: string, phaseId: string): Promise<v
 
 export async function addIncident(
   phaseId: string,
-  input: { occurred_at: string; category: string; description: string },
-): Promise<void> {
-  await request<void>(`/phases/${phaseId}/incidents`, {
+  input: { occurred_at: string; category: string; description: string; image_urls?: string[] },
+): Promise<PhaseIncident> {
+  return request<PhaseIncident>(`/phases/${phaseId}/incidents`, {
     method: 'POST',
     body: JSON.stringify(input),
   })
+}
+
+export async function uploadIncidentImage(incidentId: string, file: File): Promise<{ url: string; filename: string; size: number }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/incidents/${incidentId}/images`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: formData,
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
+export function getIncidentImageUrl(path: string): string {
+  return `${API_BASE}${path}`
 }
 
 export async function listRoles(): Promise<RoleDefinition[]> {

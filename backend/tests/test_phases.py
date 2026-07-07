@@ -29,10 +29,10 @@ def test_list_phases(client, auth_headers):
     resp = client.get(f"/projects/{pid}/phases", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
-    # auto-generated from template: 5 phases
-    assert len(data) == 5
+    # auto-generated from template: 4 phases
+    assert len(data) == 4
     assert data[0]["phase_name"] == "机械设计"
-    assert data[4]["phase_name"] == "尾款"
+    assert data[3]["phase_name"] == "尾款"
 
 
 def test_update_phase_status(client, auth_headers):
@@ -61,7 +61,7 @@ def test_delete_phase(client, auth_headers):
     assert resp.status_code == 204
 
     phases = client.get(f"/projects/{pid}/phases", headers=auth_headers).json()
-    assert len(phases) == 4
+    assert len(phases) == 3
 
 
 def test_add_incident(client, auth_headers):
@@ -82,8 +82,8 @@ def test_global_phases_list(client, auth_headers):
     resp = client.get("/phases", headers=auth_headers)
     assert resp.status_code == 200
     data = resp.json()
-    assert len(data) == 10  # 5 per project
+    assert len(data) == 8  # 4 per project
 
     # Filter by project
     resp2 = client.get(f"/phases?project_id={proj_a['id']}", headers=auth_headers)
-    assert len(resp2.json()) == 5
+    assert len(resp2.json()) == 4

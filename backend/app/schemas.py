@@ -73,6 +73,7 @@ class PhaseIncidentCreate(BaseModel):
     occurred_at: date | None = None  # defaults to today if not provided
     category: str = "现状描述"  # 现状描述 | 逾期原因
     description: str
+    image_urls: list[str] = Field(default_factory=list)
 
 
 class PhaseIncidentOut(BaseModel):
@@ -81,6 +82,7 @@ class PhaseIncidentOut(BaseModel):
     occurred_at: date
     category: str
     description: str
+    image_urls: list[str] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -303,6 +305,9 @@ class ProjectOut(BaseModel):
     agreement_filename: str = ""
 
     project_status: str = ""  # 正常|逾期|已完成 — computed by backend
+
+    project_manager_name: str | None = None
+    salesman_name: str | None = None
 
     phases: list[ProjectPhaseOut] = Field(default_factory=list)
     assignments: list[ProjectAssignmentOut] = Field(default_factory=list)

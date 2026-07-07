@@ -103,6 +103,11 @@ def init_db() -> None:
         if col in proj_cols:
             with engine.begin() as conn:
                 conn.execute(text(f"ALTER TABLE project DROP COLUMN {col}"))
+    # 添加 incident image_urls_json 字段
+    inc_cols = [c["name"] for c in sa_inspect(engine).get_columns("phase_incident")]
+    if "image_urls_json" not in inc_cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE phase_incident ADD COLUMN image_urls_json TEXT NOT NULL DEFAULT ''"))
 
     from .seed import migrate_person_role, seed_default_template, seed_persons, seed_role_definitions
     migrate_person_role()

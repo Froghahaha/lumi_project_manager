@@ -9,7 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel, create_engine
 
-from backend.app.db import PRODUCTION_TEMPLATE_ID, _hash_password
+from backend.app.db import PRODUCTION_TEMPLATE_ID
+from backend.app.seed import _hash_password
 from backend.app.main import app, get_session
 
 # Prevent the real init_db from running during tests
@@ -68,11 +69,18 @@ def _seed_test_data(engine):
             tmpl = PhaseTemplate(id=PRODUCTION_TEMPLATE_ID, name="生产项目模板", description="标准模板")
             session.add(tmpl)
             items = [
-                PhaseTemplateItem(template_id=tmpl.id, seq=1, phase_name="机械设计", sub_statuses_json='["未开始","设计中","图纸已下发"]'),
-                PhaseTemplateItem(template_id=tmpl.id, seq=2, phase_name="生产", sub_statuses_json='["未开始","生产中","生产完成","已发货"]'),
-                PhaseTemplateItem(template_id=tmpl.id, seq=3, phase_name="调机", sub_statuses_json='["未开始","安调中","安调完成"]'),
-                PhaseTemplateItem(template_id=tmpl.id, seq=4, phase_name="验收", sub_statuses_json='["未开始","已验收"]'),
-                PhaseTemplateItem(template_id=tmpl.id, seq=5, phase_name="尾款", sub_statuses_json="[]"),
+                PhaseTemplateItem(template_id=tmpl.id, seq=1, phase_name="机械设计",
+                                  sub_statuses_json='["未开始","设计中","图纸已下发"]',
+                                  terminal_statuses_json='["图纸已下发"]'),
+                PhaseTemplateItem(template_id=tmpl.id, seq=2, phase_name="生产",
+                                  sub_statuses_json='["未开始","生产中","生产完成","已发货"]',
+                                  terminal_statuses_json='["已发货"]'),
+                PhaseTemplateItem(template_id=tmpl.id, seq=3, phase_name="调机",
+                                  sub_statuses_json='["未开始","安调中","安调完成","验收完成"]',
+                                  terminal_statuses_json='["验收完成"]'),
+                PhaseTemplateItem(template_id=tmpl.id, seq=4, phase_name="尾款",
+                                  sub_statuses_json='["收款中","收款完成"]',
+                                  terminal_statuses_json='["收款完成"]'),
             ]
             for it in items:
                 session.add(it)

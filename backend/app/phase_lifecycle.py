@@ -22,7 +22,7 @@ from .db import PRODUCTION_TEMPLATE_ID, engine
 _config: dict[int, dict] = {}
 _loaded = False
 
-PHASE_ORDER = [1, 2, 3, 4, 5]
+PHASE_ORDER = [1, 2, 3, 4]
 
 
 def _load():
@@ -88,15 +88,14 @@ def is_terminal(seq: int, status: str) -> bool:
 
 def get_init_status(seq: int) -> str:
     """Phase-specific initial status when created/started."""
-    mapping = {5: '进行中'}  # 尾款 starts in-progress
+    mapping = {4: '进行中'}  # 尾款 starts in-progress
     return mapping.get(seq, '')
 
 
 # Phase completion → triggers tail start (per payment_due_type config)
 TAIL_TRIGGER: dict[str, int] = {
-    'after_tuning': 3,      # 调机完成
+    'after_tuning': 3,      # 调机完成（含验收完成）
     'after_shipping': 2,    # 生产已发货
-    'after_acceptance': 4,  # 验收完成
 }
 
 
@@ -107,7 +106,7 @@ def apply_terminal_side_effect(seq: int, status: str, project_id: str, session: 
 
     from .models import Project
     proj = session.get(Project, project_id)
-    trigger_seq = TAIL_TRIGGER.get(proj.payment_due_type, 4) if proj else 4
+    trigger_seq = TAIL_TRIGGER.get(proj.payment_due_type, 3) if proj else 3
     if seq == trigger_seq:
         _activate_tail(project_id, session)
         return True
@@ -120,7 +119,7 @@ def apply_terminal_side_effect(seq: int, status: str, project_id: str, session: 
 
 SUPERVISOR_MANAGED: dict[str, list[int]] = {
     'tech_supervisor': [1, 2],
-    'after_sales_super': [3, 4, 5],
+    'after_sales_super': [3, 4],  # 调机 + 尾款
 }
 
 def can_manage_phase(roles: list[str], seq: int) -> bool:
@@ -139,7 +138,7 @@ def _activate_tail(project_id: str, session: Session) -> None:
     tail = session.exec(
         select(ProjectPhase).where(
             ProjectPhase.project_id == project_id,
-            ProjectPhase.seq == 5,
+            ProjectPhase.seq == 4,
         )
     ).first()
     if not tail or tail.start_date:

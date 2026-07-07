@@ -45,7 +45,7 @@ def seed_default_template() -> None:
             tmpl = PhaseTemplate(
                 id=PRODUCTION_TEMPLATE_ID,
                 name="生产项目模板",
-                description="标准生产项目 5 阶段: 机械设计->生产->调机->验收->尾款",
+                description="标准生产项目 4 阶段: 机械设计->生产->调机->尾款",
             )
             session.add(tmpl)
             session.flush()
@@ -65,12 +65,9 @@ def seed_default_template() -> None:
                               sub_statuses_json='["未开始", "生产中", "生产完成", "已发货"]',
                               terminal_statuses_json='["已发货"]'),
             PhaseTemplateItem(template_id=tmpl.id, seq=3, phase_name="调机",
-                              sub_statuses_json='["未开始", "安调中", "安调完成"]',
-                              terminal_statuses_json='["安调完成"]'),
-            PhaseTemplateItem(template_id=tmpl.id, seq=4, phase_name="验收",
-                              sub_statuses_json='["未开始", "已验收"]',
-                              terminal_statuses_json='["已验收"]'),
-            PhaseTemplateItem(template_id=tmpl.id, seq=5, phase_name="尾款",
+                              sub_statuses_json='["未开始", "安调中", "安调完成", "验收完成"]',
+                              terminal_statuses_json='["验收完成"]'),
+            PhaseTemplateItem(template_id=tmpl.id, seq=4, phase_name="尾款",
                               sub_statuses_json='["收款中", "收款完成"]',
                               terminal_statuses_json='["收款完成"]'),
         ]

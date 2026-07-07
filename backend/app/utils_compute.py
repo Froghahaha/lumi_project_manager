@@ -62,11 +62,7 @@ def compute_payment_due_date(
         for prod in phases:
             if prod.get("seq") == 2 and prod.get("status") == "已发货":
                 return (prod.get("actual_end_date") or today) + timedelta(days=due_days)
-    elif due_type == "after_acceptance":
-        for acc in phases:
-            if acc.get("seq") == 4 and acc.get("actual_end_date"):
-                return acc["actual_end_date"] + timedelta(days=due_days)
-    elif due_type == "after_tuning":
+    elif due_type in ("after_acceptance", "after_tuning"):
         for tune in phases:
             if tune.get("seq") == 3:
                 base = tune.get("actual_end_date") or (

@@ -57,7 +57,7 @@ class Project(SQLModel, table=True):
     contract_actual_delivery_days: int | None = None
     contract_payment_progress: float | None = None  # 实际收款进度
 
-    payment_due_type: str | None = None  # after_tuning | after_shipping | after_acceptance
+    payment_due_type: str | None = None  # after_tuning | after_shipping
     payment_due_days: int | None = None  # 尾款到期天数 N
 
     is_abnormal: bool = False
@@ -99,6 +99,7 @@ class PhaseIncident(SQLModel, table=True):
     occurred_at: date
     category: str = ""
     description: str
+    image_urls_json: str = ""  # JSON array of image URLs
     created_at: datetime = Field(default_factory=utcnow)
 
 

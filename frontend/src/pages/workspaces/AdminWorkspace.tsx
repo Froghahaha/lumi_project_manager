@@ -12,10 +12,10 @@ import {
 } from '../../api'
 import { WorkspaceShell } from '../../components/WorkspaceShell'
 import { ProjectCard } from '../../components/ProjectCard'
+import { ProjectFilterBar } from '../../components/ProjectFilterBar'
+import { useProjectFilter } from '../../utils/useProjectFilter'
 import type { Customer, Person, Project, RoleDefinition } from '../../types'
-import { groupByUrgency, GROUP_LABELS, GROUP_ORDER, type UrgencyGroup } from '../../utils/urgency'
 import { phaseWarnings } from '../../utils/phaseConfig'
-
 
 
 export function AdminWorkspace() {
@@ -36,6 +36,15 @@ export function AdminWorkspace() {
   const [personSaving, setPersonSaving] = useState(false)
   const [personForm] = Form.useForm()
 
+  // Customer code → name lookup
+  const customerMap = useMemo(
+    () => Object.fromEntries(customers.map(c => [c.id, c.name])),
+    [customers],
+  )
+
+  // ── Shared filter / sort / search ──────────────────────────
+  const filter = useProjectFilter(projects, customerMap)
+
   async function load() {
     setLoading(true); setError(null)
     try {
@@ -46,17 +55,9 @@ export function AdminWorkspace() {
   }
   useEffect(() => { load() }, [])
 
-  // Count overdue projects by urgency group (matches tab counts)
-  const grouped = useMemo(() => groupByUrgency(projects), [projects])
-  const overdueByUrgency: { label: string; count: number }[] = GROUP_ORDER
-    .filter((g) => g.endsWith('_overdue') && grouped[g].length > 0)
-    .map((g) => ({ label: GROUP_LABELS[g], count: grouped[g].length }))
-
   const paymentDueWarnings = projects.filter((p) =>
     phaseWarnings(p).some((w) => w.type === 'payment_due')
   )
-
-  
 
   const roleMap = Object.fromEntries(roles.map((r) => [r.code, r.name]))
 
@@ -113,38 +114,29 @@ export function AdminWorkspace() {
     catch (e) { message.error(e instanceof Error ? e.message : String(e)) }
   }
 
-
-
   // ── Stats bar ──────────────────────────────────────────────────
 
-    const stats = (
+  const stats = (
     <Space size={4} wrap>
       <Tag color="blue">项目 {projects.length}</Tag>
       <Tag color="purple">人员 {persons.length}</Tag>
       <Tag color="cyan">客户 {customers.length}</Tag>
-      {overdueByUrgency.map(({ label, count }) => (<Tag color="red" key={label}>{label} {count}</Tag>))}
+      {filter.statusCounts.overdue > 0 && <Tag color="red">逾期 {filter.statusCounts.overdue}</Tag>}
+      {filter.statusCounts.warn > 0 && <Tag color="orange">预警 {filter.statusCounts.warn}</Tag>}
       {paymentDueWarnings.length > 0 && <Tag color="volcano">尾款到期 {paymentDueWarnings.length}</Tag>}
     </Space>
   )
 
+  // ── Filter bar ─────────────────────────────────────────────────
+
+  const filterBar = (
+    <ProjectFilterBar
+      state={filter}
+      actions={filter}
+    />
+  )
+
   // ── Render ─────────────────────────────────────────────────────
-
-  const showGroups = GROUP_ORDER  // always show all urgency categories
-  const [urgencyTab, setUrgencyTab] = useState<UrgencyGroup>('normal')
-
-  const urgencyTabItems = showGroups.map((g) => ({
-    key: g,
-    label: `${GROUP_LABELS[g]} (${grouped[g].length})`,
-    children: (
-      <Row gutter={[8, 8]}>
-        {grouped[g].map((p) => (
-          <Col key={p.id} xs={24} sm={24} md={12} lg={8}>
-            <ProjectCard project={p} />
-          </Col>
-        ))}
-      </Row>
-    ),
-  }))
 
   return (
     <WorkspaceShell loading={loading} error={error} extra={stats}>
@@ -153,19 +145,6 @@ export function AdminWorkspace() {
           key: 'overview', label: '项目总览',
           children: (
             <div>
-              {/* {overdueByUrgency.length > 0 && (
-                <div style={{ marginBottom: 12, padding: '6px 12px', background: '#fff2f0', borderRadius: 4, border: '1px solid #ffccc7' }}>
-                  <Typography.Text style={{ fontSize: 13, fontWeight: 600, color: '#cf1322' }}>
-                    逾期待处理：
-                  </Typography.Text>
-                  <Space size={4} wrap style={{ marginLeft: 8 }}>
-                    {overdueByUrgency.map(({ label, count }) => (
-                      <Tag color="red" key={label}>{label} {count}</Tag>
-                    ))}
-                  </Space>
-                </div>
-              )} */}
-
               {paymentDueWarnings.length > 0 && (
                 <div style={{ marginBottom: 12, padding: '6px 12px', background: '#fff7e6', borderRadius: 4, border: '1px solid #ffd591' }}>
                   <Typography.Text style={{ fontSize: 13, fontWeight: 600, color: '#d46b08' }}>
@@ -181,12 +160,20 @@ export function AdminWorkspace() {
                 </div>
               )}
 
-              <Tabs
-                activeKey={urgencyTab}
-                onChange={(k) => setUrgencyTab(k as UrgencyGroup)}
-                size="small"
-                items={urgencyTabItems}
-              />
+              {filterBar}
+
+              <Row gutter={[8, 8]}>
+                {filter.filteredProjects.map((p) => (
+                  <Col key={p.id} xs={24} sm={24} md={12} lg={8}>
+                    <ProjectCard project={p} />
+                  </Col>
+                ))}
+              </Row>
+              {filter.filteredProjects.length === 0 && (
+                <Typography.Text type="secondary" style={{ display: 'block', textAlign: 'center', padding: 40 }}>
+                  暂无匹配项目
+                </Typography.Text>
+              )}
             </div>
           ),
         },

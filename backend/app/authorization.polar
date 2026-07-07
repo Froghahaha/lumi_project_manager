@@ -85,7 +85,7 @@ allow(actor: AppUser, "phase_responsibility:3", "ui") if
     has_role(actor, "tuning_executor") or has_role(actor, "acceptance_executor");
 
 allow(actor: AppUser, "phase_responsibility:4", "ui") if
-    has_role(actor, "tuning_executor") or has_role(actor, "acceptance_executor");
+    has_role(actor, "salesman");
 
 # 生产执行人的特殊 UI
 allow(actor: AppUser, "show_prev_phase_status", "ui") if

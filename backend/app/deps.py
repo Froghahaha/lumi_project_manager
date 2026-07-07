@@ -23,6 +23,8 @@ else:
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 AGREEMENT_DIR = UPLOAD_DIR / "agreements"
 AGREEMENT_DIR.mkdir(parents=True, exist_ok=True)
+INCIDENT_DIR = UPLOAD_DIR / "incidents"
+INCIDENT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ─── Token store (in-memory session) ───────────────────────
 

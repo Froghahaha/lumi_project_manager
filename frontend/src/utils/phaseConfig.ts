@@ -4,24 +4,24 @@ import type { Project } from '../types'
 
 // ── Phase identity ──────────────────────────────────────────
 
-export const PHASE_ORDER = ['机械设计', '生产', '调机', '验收', '尾款'] as const
+export const PHASE_ORDER = ['机械设计', '生产', '调机', '尾款'] as const
 export type PhaseName = typeof PHASE_ORDER[number]
 
 export const PHASE_SEQ: Record<string, number> = {
-  '机械设计': 1, '生产': 2, '调机': 3, '验收': 4, '尾款': 5,
+  '机械设计': 1, '生产': 2, '调机': 3, '尾款': 4,
 }
 
 export const SEQ_NAME: Record<number, string> = {
-  1: '机械设计', 2: '生产', 3: '调机', 4: '验收', 5: '尾款',
+  1: '机械设计', 2: '生产', 3: '调机', 4: '尾款',
 }
 
 export const SEQ_FIRST = 1
-export const SEQ_LAST = 5
+export const SEQ_LAST = 4
 
 // ── Urgency key mapping ─────────────────────────────────────
 
 const URGENCY_PREFIX: Record<number, string> = {
-  1: 'design', 2: 'prod', 3: 'tune', 4: 'accept', 5: 'tail',
+  1: 'design', 2: 'prod', 3: 'tune', 4: 'tail',
 }
 
 export function urgencyKey(phaseName: string, level: 'warn' | 'overdue'): string {
@@ -37,7 +37,7 @@ export const ROLE_RESPONSIBILITY: Record<string, number[]> = {
   software_designer:    [1],
   production_executor:  [2],
   tuning_executor:      [3],
-  acceptance_executor:  [3, 4],
+  acceptance_executor:  [3],
 }
 
 /** Role -> assignable role codes (mirrors seed.py ROLE_DEFINITIONS assigns_json) */
@@ -76,7 +76,7 @@ export function phaseWarnings(p: Project): { type: string; message: string }[] {
 /** Which seqs each supervisor role manages */
 export const SUPERVISOR_SEQS: Record<string, number[]> = {
   tech_supervisor: [1, 2],
-  after_sales_super: [3, 4, 5],
+  after_sales_super: [3, 4],
 }
 
 export function managedByRole(roleCode: string): number[] {
@@ -98,7 +98,7 @@ export interface PhasePerms {
 
 const SEQ_TO_ROLE: Record<number, string> = {
   1: 'mechanical_designer', 2: 'production_executor',
-  3: 'tuning_executor', 4: 'acceptance_executor', 5: 'salesman',
+  3: 'tuning_executor', 4: 'salesman',
 }
 
 export function phasePermissions(
@@ -110,7 +110,7 @@ export function phasePermissions(
   const isAdmin = role === 'admin'
   const isTechSuper = role === 'tech_supervisor'
   const isAfterSales = role === 'after_sales_super'
-  const managed = (isTechSuper && [1, 2].includes(seq)) || (isAfterSales && [3, 4, 5].includes(seq))
+  const managed = (isTechSuper && [1, 2].includes(seq)) || (isAfterSales && [3, 4].includes(seq))
   const canEdit = isAdmin || managed
 
   return {
@@ -120,7 +120,7 @@ export function phasePermissions(
     canUpdateStatus: isMyPhase || isAdmin || managed,
     canAddIncident: isAdmin || ['tech_supervisor', 'after_sales_super'].includes(role)
       || isMyPhase || isProjectMember
-      || (seq === 5 && role === 'salesman'),
+      || (seq === 4 && role === 'salesman'),
     canDelete: canEdit,
   }
 }

@@ -55,15 +55,16 @@ from sqlmodel import Session, select  # noqa: E402
 
 PLACEHOLDER_NAMES = {'项目经理', '销售人员', '项目负责人', '/', ''}
 
-PHASE_NAMES = ['机械设计', '生产', '调机', '验收', '尾款']
+PHASE_NAMES = ['机械设计', '生产', '调机', '尾款']
 PHASE_SEQ = {name: i + 1 for i, name in enumerate(PHASE_NAMES)}
 
 # G column -> phase name mapping (column G labels the phase type per row)
+# 验收已并入调机阶段，但 Excel 中验收行仍然存在，需要读取后合并
 G_TO_PHASE: dict[str, str] = {
     '设计': '机械设计',
     '生产': '生产',
     '调机派遣': '调机',
-    '验收': '验收',
+    '验收': '调机',  # 验收已并入调机
     '尾款': '尾款',
 }
 
@@ -71,8 +72,8 @@ G_TO_PHASE: dict[str, str] = {
 G_TO_ROLE: dict[str, str] = {
     '设计': 'mechanical_designer',
     '生产': 'production_executor',
-    '调机派遣': '',  # 此行人不指派 — 验收行的人同时负责调机+验收
-    '验收': 'acceptance_executor',
+    '调机派遣': '',  # 此行人不指派
+    '验收': 'tuning_executor',  # 验收执行人 → 调机阶段
     '尾款': '',
 }
 
@@ -80,9 +81,8 @@ G_TO_ROLE: dict[str, str] = {
 PHASE_COMPLETED_STATUS: dict[int, str] = {
     1: '图纸已下发',   # 机械设计
     2: '生产完成',      # 生产
-    3: '安调完成',      # 调机
-    4: '已验收',        # 验收
-    # 5 尾款 — no status
+    3: '验收完成',      # 调机（含验收）— 有 actual_end_date 即为验收完成
+    # 4 尾款 — no status
 }
 
 EQUIP_ITEM = re.compile(r'(\d+)\s*台\s*(.+?)(?=\s*\d+\s*台|\s*$|[；;，,\n])')
@@ -349,6 +349,19 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
             if phase_name not in PHASE_SEQ:
                 continue
 
+            # 验收行数据合并到调机阶段 — 不新建 phase，更新已有调机
+            if g_name == '验收':
+                existing_tune = next((ph for ph in phases if ph['phase_name'] == '调机'), None)
+                if existing_tune:
+                    if actual:
+                        existing_tune['status'] = '验收完成'
+                        existing_tune['actual_end_date'] = actual
+                    if actual_duration is not None:
+                        existing_tune['actual_duration'] = actual_duration
+                    # 合并事件
+                    existing_tune['incidents'].extend(incidents)
+                continue
+
             phase_counters[phase_name] = phase_counters.get(phase_name, 0) + 1
             count = phase_counters[phase_name]
             base_seq = PHASE_SEQ[phase_name]
@@ -365,10 +378,9 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                     if g_name == '调机派遣':
                         pass  # 调机派遣行的人不指派
                     elif g_name == '验收':
-                        # 验收行的人同时负责调机和验收两个工序
+                        # 验收行的人分配为 tuning_executor，对应调机阶段
                         executors.append({'role_code': 'tuning_executor', 'person_name': h_name, '_row': i, '_match_phase': '调机'})
-                        executors.append({'role_code': 'acceptance_executor', 'person_name': h_name, '_row': i})
-                        persons_set.setdefault(h_name, set()).update(['tuning_executor', 'acceptance_executor'])
+                        persons_set.setdefault(h_name, set()).add('tuning_executor')
                     elif role_code := G_TO_ROLE.get(g_name, ''):
                         executors.append({'role_code': role_code, 'person_name': h_name, '_row': i})
                         persons_set.setdefault(h_name, set()).add(role_code)
@@ -404,7 +416,7 @@ def import_excel(filepath: str, dry_run: bool = False) -> None:
                 except (ValueError, TypeError):
                     pass
             # M column: if actual_end_date present → phase is completed (尾款 always 进行中)
-            status = '进行中' if seq == 5 else (PHASE_COMPLETED_STATUS.get(seq, '') if actual else '')
+            status = '进行中' if seq == 4 else (PHASE_COMPLETED_STATUS.get(seq, '') if actual else '')
             phases.append({
                 '_idx': len(phases),
                 'seq': seq,

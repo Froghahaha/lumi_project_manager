@@ -12,8 +12,9 @@ export const PHASE_STATUSES = [
   '未开始',
   '设计中', '图纸已下发',                           // 机械设计
   '生产中', '生产完成', '已发货',                    // 生产
-  '安调中', '安调完成',                              // 调机
-  '已验收',                                          // 验收
+  '安调中', '安调完成', '验收完成',                  // 调机（含验收）
+  '收款中', '收款完成',                              // 尾款
+  '进行中',                                          // 尾款初始状态
 ] as const
 
 export type PhaseStatus = typeof PHASE_STATUSES[number] | ''
@@ -48,6 +49,9 @@ export type Project = {
   agreement_filename: string
 
   project_status: string  // 正常|逾期|已完成 — computed by backend
+
+  project_manager_name: string | null
+  salesman_name: string | null
 
   phases: ProjectPhase[]
   assignments: ProjectAssignment[]
@@ -98,6 +102,7 @@ export type PhaseIncident = {
   occurred_at: string
   category: string
   description: string
+  image_urls: string[]
   created_at: string
 }
 

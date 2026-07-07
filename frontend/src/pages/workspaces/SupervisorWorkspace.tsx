@@ -8,13 +8,14 @@ import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
 import { WorkspaceShell } from '../../components/WorkspaceShell'
 import { ProjectCard } from '../../components/ProjectCard'
+import { ProjectFilterBar } from '../../components/ProjectFilterBar'
+import { useProjectFilter } from '../../utils/useProjectFilter'
 import { AssignmentPicker } from '../../components/AssignmentPicker'
 import {
   addPhase, deletePhase, listAssignments, listPhasesGlobal,
-  listProjects, listRoles, updatePhase,
+  listProjects, listRoles, updatePhase, listCustomers,
 } from '../../api'
-import { groupByUrgency, GROUP_LABELS, GROUP_ORDER } from '../../utils/urgency'
-import type { Project, ProjectAssignment, ProjectPhase, RoleDefinition } from '../../types'
+import type { Customer, Project, ProjectAssignment, ProjectPhase, RoleDefinition } from '../../types'
 import { anyPhaseOfSeq } from '../../utils/phases'
 
 const MANAGED_SEQS = [1, 2]
@@ -22,12 +23,12 @@ const ADDABLE_PHASES = ['机械设计', '生产']
 
 function missingAssignments(p: Project): string[] {
   const m: string[] = []
-  const hasPm = p.assignments.some((a) => a.role_code === 'project_manager')
   if (anyPhaseOfSeq(p.phases, 1, (ph) => !ph.responsible && !p.assignments.some((a) => a.phase_id === ph.id)))
     m.push('need_design')
   if (anyPhaseOfSeq(p.phases, 2, (ph) => !ph.responsible && !p.assignments.some((a) => a.phase_id === ph.id)))
     m.push('need_production')
-  if (!hasPm) m.push('need_pm')
+  if (!p.assignments.some((a) => a.role_code === 'project_manager'))
+    m.push('need_pm')
   return m
 }
 
@@ -36,6 +37,7 @@ export function SupervisorWorkspace() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [roles, setRoles] = useState<RoleDefinition[]>([])
   const [selected, setSelected] = useState<Project | null>(null)
   const [phases, setPhases] = useState<ProjectPhase[]>([])
@@ -46,8 +48,10 @@ export function SupervisorWorkspace() {
   useEffect(() => {
     (async () => {
       setLoading(true)
-      try { const [p, r] = await Promise.all([listProjects(), listRoles()]); setProjects(p); setRoles(r) }
-      catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+      try {
+        const [p, r, c] = await Promise.all([listProjects(), listRoles(), listCustomers()])
+        setProjects(p); setRoles(r); setCustomers(c)
+      } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
       setLoading(false)
     })()
   }, [])
@@ -92,7 +96,8 @@ export function SupervisorWorkspace() {
     setPhases((prev) => prev.map((p) => p.id === ph.id ? { ...p, [field]: value } : p))
   }
 
-  const grouped = useMemo(() => {
+  // Split projects: those with missing assignments vs the rest
+  const { needs, rest } = useMemo(() => {
     const needs: Record<string, Project[]> = { need_design: [], need_production: [], need_pm: [] }
     const rest: Project[] = []
     for (const p of projects) {
@@ -100,36 +105,54 @@ export function SupervisorWorkspace() {
       if (m.length) { for (const k of m) needs[k].push(p) }
       else rest.push(p)
     }
-    const result: { key: string; label: string; items: Project[] }[] = []
-    const L: Record<string, string> = { need_design: '缺机械设计', need_production: '缺生产执行人', need_pm: '缺项目经理' }
-    for (const k of ['need_design', 'need_production', 'need_pm'])
-      result.push({ key: k, label: L[k], items: needs[k] })
-    const umap = groupByUrgency(rest)
-    for (const g of GROUP_ORDER)
-      if (umap[g].length) result.push({ key: g, label: GROUP_LABELS[g], items: umap[g] })
-    return result
+    return { needs, rest }
   }, [projects])
 
-  const [activeTab, setActiveTab] = useState(grouped[0]?.key || 'normal')
+  const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c.name])), [customers])
+  const filter = useProjectFilter(rest, customerMap)
+
+  const needTabs = [
+    { key: 'need_design', label: '缺机械设计' },
+    { key: 'need_production', label: '缺生产执行人' },
+    { key: 'need_pm', label: '缺项目经理' },
+  ]
+
   const MANAGED_ROLES: Record<number, string> = { 1: 'mechanical_designer', 2: 'production_executor' }
 
   return (
     <WorkspaceShell loading={loading} error={error}>
       {!projects.length ? <Empty description="暂无项目" /> : (
-        <Tabs activeKey={activeTab} onChange={setActiveTab} size="small"
-          items={grouped.map((g) => ({
-            key: g.key, label: `${g.label} (${g.items.length})`,
+        <Tabs size="small" items={[
+          ...needTabs.map(nt => ({
+            key: nt.key,
+            label: `${nt.label} (${needs[nt.key].length})`,
             children: (
               <Row gutter={[8, 8]}>
-                {g.items.map((p) => (
+                {needs[nt.key].map(p => (
                   <Col key={p.id} xs={24} sm={24} md={12} lg={8}>
                     <ProjectCard project={p} onClick={() => setSelected(p)} />
                   </Col>
                 ))}
               </Row>
             ),
-          }))}
-        />
+          })),
+          {
+            key: 'rest',
+            label: `运行中 (${filter.filteredProjects.length})`,
+            children: (
+              <>
+                <ProjectFilterBar state={filter} actions={filter} />
+                <Row gutter={[8, 8]}>
+                  {filter.filteredProjects.map(p => (
+                    <Col key={p.id} xs={24} sm={24} md={12} lg={8}>
+                      <ProjectCard project={p} onClick={() => setSelected(p)} />
+                    </Col>
+                  ))}
+                </Row>
+              </>
+            ),
+          },
+        ]} />
       )}
 
       <Drawer title={selected?.order_no} open={!!selected}

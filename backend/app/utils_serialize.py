@@ -22,10 +22,17 @@ from .utils_compute import (
 
 
 def incident_to_out(inc: PhaseIncident) -> PhaseIncidentOut:
+    image_urls: list[str] = []
+    if inc.image_urls_json:
+        try:
+            image_urls = json.loads(inc.image_urls_json)
+        except (json.JSONDecodeError, TypeError):
+            pass
     return PhaseIncidentOut(
         id=inc.id, phase_id=inc.phase_id,
         occurred_at=inc.occurred_at, category=inc.category,
-        description=inc.description, created_at=inc.created_at,
+        description=inc.description, image_urls=image_urls,
+        created_at=inc.created_at,
     )
 
 
@@ -86,6 +93,9 @@ def project_to_out(
         for po in phase_outs
     ]
     due_dt = compute_payment_due_date(p.payment_due_type, p.payment_due_days, phase_dicts)
+    # Extract PM and salesman names from assignments
+    pm_name = next((a.person_name for a in assignments if a.role_code == 'project_manager'), None)
+    salesman_name = next((a.person_name for a in assignments if a.role_code == 'salesman'), None)
     return ProjectOut(
         id=p.id, order_no=p.order_no,
         customer_id=p.customer_id, end_customer=p.end_customer,
@@ -105,6 +115,8 @@ def project_to_out(
         payment_due_days=p.payment_due_days,
         project_status=compute_project_status([{'phase_progress': po.phase_progress} for po in phase_outs]),
         payment_due_date=due_dt.isoformat() if due_dt else None,
+        project_manager_name=pm_name,
+        salesman_name=salesman_name,
         phases=phase_outs,
         assignments=[assignment_to_out(a) for a in assignments],
         equipment_list=[equipment_to_out(e) for e in equip_list],

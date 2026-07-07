@@ -4,7 +4,7 @@ Write-Host "  Lumi Project Manager - 一键重启" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = $PSScriptRoot
 Set-Location $root
 
 # ── 1. 停止旧进程 ──────────────────────────────────
@@ -19,7 +19,9 @@ Start-Sleep -Seconds 1
 
 # ── 2. 启动后端 ────────────────────────────────────
 Write-Host "[2/3] 启动后端 (port 8000)..." -ForegroundColor Yellow
-$backend = Start-Process -FilePath "python" -ArgumentList "scripts/_start_server.py" -WindowStyle Minimized -PassThru
+$python = if (Test-Path "C:\ProgramData\anaconda3\python.exe") { "C:\ProgramData\anaconda3\python.exe" } else { "python" }
+$env:PYTHONPATH = $root
+$backend = Start-Process -FilePath $python -ArgumentList "scripts/_start_server.py" -WindowStyle Minimized -PassThru
 
 Write-Host "      等待后端启动..." -ForegroundColor Gray
 $retry = 0

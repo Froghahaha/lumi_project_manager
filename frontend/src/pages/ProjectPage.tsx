@@ -11,7 +11,7 @@ import { AssignmentPicker } from '../components/AssignmentPicker'
 import { PhaseCard } from '../components/PhaseCard'
 import { PhaseProgress } from '../components/PhaseProgress'
 import { useAuth } from '../contexts/AuthContext'
-import { addIncident, addPhase, deletePhase, deleteProject, getAgreementUrl, updatePhase, updateProject, uploadAgreement } from '../api'
+import { addIncident, addPhase, deletePhase, deleteProject, getAgreementUrl, updatePhase, updateProject, uploadAgreement, uploadIncidentImage } from '../api'
 import { fmtDate } from '../utils/format'
 import { COLOR, FONT, SPACE, RADIUS } from '../design-tokens'
 import { getRoleName } from '../utils/roles'
@@ -39,9 +39,9 @@ export function ProjectPage() {
     const isAdmin = auth.role === 'admin'
     const isTechSuper = auth.role === 'tech_supervisor'
     const isAfterSales = auth.role === 'after_sales_super'
-    const managed = (isTechSuper && [1, 2].includes(ph.seq)) || (isAfterSales && [3, 4, 5].includes(ph.seq))
+    const managed = (isTechSuper && [1, 2].includes(ph.seq)) || (isAfterSales && [3, 4].includes(ph.seq))
     const canEdit = isAdmin || managed
-    const roleMap: Record<number, string> = { 1: 'mechanical_designer', 2: 'production_executor', 3: 'tuning_executor', 4: 'acceptance_executor', 5: 'salesman' }
+    const roleMap: Record<number, string> = { 1: 'mechanical_designer', 2: 'production_executor', 3: 'tuning_executor', 4: 'salesman' }
     return {
       canEditDates: canEdit, canAssign: canEdit, roleCodeForAssign: roleMap[ph.seq] || '',
       canUpdateStatus: isMyPhase || isAdmin || managed,
@@ -51,14 +51,31 @@ export function ProjectPage() {
   }
 
   async function onUpdatePayment(v: number | null) { if (v == null) return; await updateProject(project.id, { contract_payment_progress: v }); revalidator.revalidate() }
+  const [incidentFiles, setIncidentFiles] = useState<File[]>([])
+
   async function onAddIncident(values: { category: string; description: string }) {
     if (!incidentModal) return
-    await addIncident(incidentModal, { occurred_at: new Date().toISOString().slice(0, 10), category: values.category || '现状描述', description: values.description })
-    setIncidentModal(null); incidentForm.resetFields(); revalidator.revalidate()
+    try {
+      const created = await addIncident(incidentModal, {
+        occurred_at: new Date().toISOString().slice(0, 10),
+        category: values.category || '现状描述',
+        description: values.description,
+      })
+      // Upload images one by one to the newly created incident
+      if (incidentFiles.length > 0) {
+        for (const file of incidentFiles) {
+          try {
+            await uploadIncidentImage(created.id, file)
+          } catch (e) { message.warning(`图片 ${file.name} 上传失败: ${e instanceof Error ? e.message : String(e)}`) }
+        }
+      }
+      setIncidentModal(null); incidentForm.resetFields(); setIncidentFiles([])
+      revalidator.revalidate()
+    } catch (e) { message.error(e instanceof Error ? e.message : String(e)) }
   }
   async function onAddPhase(values: { phase_name: string; sub_name: string; responsible: string; is_rectify?: boolean }) {
     if (!projectId) return
-    const m: Record<string, number> = { '机械设计': 1, '生产': 2, '调机': 3, '验收': 4, '尾款': 5 }
+    const m: Record<string, number> = { '机械设计': 1, '生产': 2, '调机': 3, '尾款': 4 }
     await addPhase(projectId, { ...values, seq: m[values.phase_name] || 1 })
     setPhaseModal(false); phaseForm.resetFields(); revalidator.revalidate()
   }
@@ -90,6 +107,7 @@ export function ProjectPage() {
         <div style={{ background: `linear-gradient(135deg, ${COLOR.headerGradientStart} 0%, ${COLOR.headerGradientEnd} 100%)`, padding: `14px ${SPACE.xl}px`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Space size={12}>
             <Typography.Title level={4} style={{ margin: 0, color: COLOR.headerText }}>{project.order_no}</Typography.Title>
+            {project.contract_number && <Tag color="gold" style={{ margin: 0 }}>合同: {project.contract_number}</Tag>}
             {project.end_customer && <Tag color="geekblue" style={{ margin: 0 }}>{project.end_customer}</Tag>}
             {[...globalByRole.entries()].map(([rc, as]) => (<Tooltip key={rc} title={getRoleName(rc)}><span style={{ color: COLOR.headerTextDim, fontSize: FONT.label }}>{as.map((a) => a.person_name).join('/')}</span></Tooltip>))}
             {project.project_status === '逾期' && <Tag color="error" icon={<WarningOutlined />}>逾期</Tag>}
@@ -132,9 +150,30 @@ export function ProjectPage() {
         {sortedPhases.map((ph) => { const c = phaseControls(ph); return <PhaseCard key={ph.id} ph={ph} project={project} canEditDates={c.canEditDates} canAssign={c.canAssign} roleCodeForAssign={c.roleCodeForAssign} canUpdateStatus={c.canUpdateStatus} canAddIncident={c.canAddIncident} canDelete={c.canDelete} onAddIncident={(id) => { setIncidentModal(id); incidentForm.resetFields() }} onDeletePhase={onDeletePhase} onEditPhase={onEditPhase} onRefresh={() => revalidator.revalidate()} /> })}
       </Card>
 
-      <Modal open={!!incidentModal} title="添加事故事件" onCancel={() => setIncidentModal(null)} onOk={() => incidentForm.submit()}><Form form={incidentForm} layout="vertical" onFinish={onAddIncident}><Form.Item name="category" label="类别" initialValue="现状描述"><Select options={[{ label: '现状描述', value: '现状描述' }, { label: '逾期原因', value: '逾期原因' }]} /></Form.Item><Form.Item name="description" label="描述" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item></Form></Modal>
-      <Modal open={phaseModal} title="添加工序" onCancel={() => setPhaseModal(false)} onOk={() => phaseForm.submit()}><Form form={phaseForm} layout="vertical" onFinish={onAddPhase} onValuesChange={(c) => { if (c.phase_name) { const m: Record<string, number> = { '机械设计': 1, '生产': 2, '调机': 3, '验收': 4, '尾款': 5 }; phaseForm.setFieldsValue({ seq: m[c.phase_name] || 1 }) } }}><Form.Item name="phase_name" label="阶段" rules={[{ required: true }]}><Select options={['机械设计', '生产', '调机', '验收', '尾款', '整改'].map((s) => ({ label: s, value: s }))} /></Form.Item><Form.Item name="sub_name" label="子项名称"><Input /></Form.Item><Form.Item name="seq" hidden><InputNumber /></Form.Item><Form.Item name="responsible" label="责任人"><Input /></Form.Item></Form></Modal>
-      <Modal open={editModal} title="编辑项目信息" onCancel={() => setEditModal(false)} onOk={() => editForm.submit()} width={480}><Form form={editForm} layout="vertical" onFinish={onEditProject}><Form.Item name="end_customer" label="终端客户"><Input /></Form.Item><Form.Item name="contract_start_date" label="立项日期"><DatePicker locale={zhCNDatePicker} format="YYYY-MM-DD" style={{ width: '100%' }} /></Form.Item><Form.Item name="contract_duration_days" label="合同天数"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item><Form.Item name="contract_expected_delivery_date" label="预计交期"><DatePicker locale={zhCNDatePicker} format="YYYY-MM-DD" style={{ width: '100%' }} /></Form.Item><Form.Item name="payment_due_type" label="尾款到期条件"><Select allowClear options={[{ label: '验收完成后 N 天', value: 'after_acceptance' }, { label: '已发货后 N 天', value: 'after_shipping' }, { label: '安调完成后 N 天', value: 'after_tuning' }]} /></Form.Item><Form.Item name="payment_due_days" label="尾款到期天数 N"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Form></Modal>
+      <Modal open={!!incidentModal} title="添加事故事件" onCancel={() => { setIncidentModal(null); setIncidentFiles([]) }} onOk={() => incidentForm.submit()}>
+        <Form form={incidentForm} layout="vertical" onFinish={onAddIncident}>
+          <Form.Item name="category" label="类别" initialValue="现状描述">
+            <Select options={[{ label: '现状描述', value: '现状描述' }, { label: '逾期原因', value: '逾期原因' }]} />
+          </Form.Item>
+          <Form.Item name="description" label="描述" rules={[{ required: true }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item label="图片（可选）">
+            <Upload
+              accept="image/*"
+              listType="picture-card"
+              multiple
+              beforeUpload={(file) => { setIncidentFiles(prev => [...prev, file]); return false }}
+              onRemove={(file) => { setIncidentFiles(prev => prev.filter(f => f.name !== file.name && f.size !== file.size)) }}
+              fileList={incidentFiles.map((f, i) => ({ uid: `-${i}`, name: f.name, status: 'done' as const, originFileObj: f as any }))}
+            >
+              {incidentFiles.length < 5 && '+ 上传'}
+            </Upload>
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal open={phaseModal} title="添加工序" onCancel={() => setPhaseModal(false)} onOk={() => phaseForm.submit()}><Form form={phaseForm} layout="vertical" onFinish={onAddPhase} onValuesChange={(c) => { if (c.phase_name) { const m: Record<string, number> = { '机械设计': 1, '生产': 2, '调机': 3, '尾款': 4 }; phaseForm.setFieldsValue({ seq: m[c.phase_name] || 1 }) } }}><Form.Item name="phase_name" label="阶段" rules={[{ required: true }]}><Select options={['机械设计', '生产', '调机', '尾款', '整改'].map((s) => ({ label: s, value: s }))} /></Form.Item><Form.Item name="sub_name" label="子项名称"><Input /></Form.Item><Form.Item name="seq" hidden><InputNumber /></Form.Item><Form.Item name="responsible" label="责任人"><Input /></Form.Item></Form></Modal>
+      <Modal open={editModal} title="编辑项目信息" onCancel={() => setEditModal(false)} onOk={() => editForm.submit()} width={480}><Form form={editForm} layout="vertical" onFinish={onEditProject}><Form.Item name="end_customer" label="终端客户"><Input /></Form.Item><Form.Item name="contract_start_date" label="立项日期"><DatePicker locale={zhCNDatePicker} format="YYYY-MM-DD" style={{ width: '100%' }} /></Form.Item><Form.Item name="contract_duration_days" label="合同天数"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item><Form.Item name="contract_expected_delivery_date" label="预计交期"><DatePicker locale={zhCNDatePicker} format="YYYY-MM-DD" style={{ width: '100%' }} /></Form.Item><Form.Item name="payment_due_type" label="尾款到期条件"><Select allowClear options={[{ label: '安调/验收完成后 N 天', value: 'after_tuning' }, { label: '已发货后 N 天', value: 'after_shipping' }]} /></Form.Item><Form.Item name="payment_due_days" label="尾款到期天数 N"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Form></Modal>
     </Space>
   )
 }

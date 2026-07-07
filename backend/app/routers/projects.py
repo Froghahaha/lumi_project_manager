@@ -179,8 +179,7 @@ def create_project(
             ).first()
             if tail:
                 tail.responsible = a.person_name
-                from ...phase_lifecycle import get_init_status
-                tail.status = get_init_status(5)
+                tail.status = get_init_status(4)
                 session.add(tail)
 
     session.flush()
@@ -414,6 +413,13 @@ def add_assignment(project_id: uuid.UUID, body: ProjectAssignmentCreate, actor=D
             raise HTTPException(400, "phase not found or not in this project")
     a = ProjectAssignment(project_id=project_id, person_name=body.person_name, role_code=body.role_code, phase_id=ph_id)
     session.add(a)
+    # 机械设计工序：一旦被指派了执行人，自动变成"设计中"
+    if ph_id:
+        ph = session.get(ProjectPhase, ph_id)
+        if ph and ph.seq == 1 and ph.phase_name == '机械设计' and (not ph.status or ph.status == '未开始'):
+            ph.status = '设计中'
+            ph.updated_at = utcnow()
+            session.add(ph)
     session.flush()
     return assignment_to_out(a)
 

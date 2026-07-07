@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
   Card,
@@ -20,6 +20,7 @@ import dayjs from 'dayjs'
 import { PlusOutlined, DeleteOutlined, UploadOutlined } from '@ant-design/icons'
 import { ProjectFilterBar } from '../../components/ProjectFilterBar'
 import { ProjectTable } from '../../components/ProjectTable'
+import { useProjectFilter } from '../../utils/useProjectFilter'
 import { WorkspaceShell } from '../../components/WorkspaceShell'
 import { useAuth } from '../../contexts/AuthContext'
 import {
@@ -88,6 +89,9 @@ export function SalesWorkspace() {
   }
 
   useEffect(() => { load() }, [])
+
+  const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c.name])), [customers])
+  const filter = useProjectFilter(projects, customerMap)
 
   const effectiveCount = projects.filter((p) => p.contract_effective_date).length
   const fullPaidCount = projects.filter((p) => (p.contract_payment_progress ?? 0) >= 1).length
@@ -260,16 +264,16 @@ export function SalesWorkspace() {
     <WorkspaceShell loading={loading} error={error} extra={
       <><Tag color="green">已生效 {effectiveCount}</Tag><Tag color="purple">完结 {fullPaidCount}</Tag></>
     }>
-      <ProjectFilterBar projects={projects}>
-        {(filtered) => (
-      <div style={{ display: 'grid', gridTemplateColumns: canEdit ? '1fr 420px' : '1fr', gap: 16 }}>
-        <Card size="small" title="收款进度">
-          <ProjectTable
-            projects={filtered}
-            columns={['order_no']}
-            extraColumns={extraColumns}
-          />
-        </Card>
+      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <ProjectFilterBar state={filter} actions={filter} />
+        <div style={{ display: 'grid', gridTemplateColumns: canEdit ? '1fr 420px' : '1fr', gap: 16 }}>
+          <Card size="small" title="收款进度">
+            <ProjectTable
+              projects={filter.filteredProjects}
+              columns={['order_no']}
+              extraColumns={extraColumns}
+            />
+          </Card>
 
         {canEdit && (
           <Card size="small" title="新建项目">
@@ -334,7 +338,7 @@ export function SalesWorkspace() {
                           <Select placeholder="机型" size="small" options={EQUIP_CATEGORIES.map((c) => ({ label: c, value: c }))} />
                         </Form.Item>
                         <Form.Item {...restField} name={[name, 'spec']} style={{ margin: 0, width: 130 }}>
-                          <Input placeholder="描述" size="small" />
+                          <Input placeholder="型号" size="small" />
                         </Form.Item>
                         <Form.Item {...restField} name={[name, 'quantity']} style={{ margin: 0, width: 70 }}>
                           <InputNumber placeholder="数量" size="small" min={1} style={{ width: 70 }} />
@@ -364,9 +368,8 @@ export function SalesWorkspace() {
               </Form.Item>
               <Form.Item name="payment_due_type" label="尾款开始征收条件">
                 <Select allowClear placeholder="选择合同约定的前置条件" options={[
-                  { label: '验收完成', value: 'after_acceptance' },
+                  { label: '安调/验收完成', value: 'after_tuning' },
                   { label: '已发货', value: 'after_shipping' },
-                  { label: '安调完成', value: 'after_tuning' },
                 ]} />
               </Form.Item>
               <Form.Item name="payment_due_days" label="尾款到期天数">
@@ -387,8 +390,7 @@ export function SalesWorkspace() {
           </Card>
         )}
       </div>
-        )}
-      </ProjectFilterBar>
+      </Space>
 
       {/* Customer creation modal */}
       <Modal

@@ -6,10 +6,11 @@ import json
 from datetime import date
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from sqlmodel import Session, select
 
-from ..deps import deny_salesman, get_current_user, get_session, utcnow
+from ..deps import INCIDENT_DIR, deny_salesman, get_current_user, get_session, utcnow
 from ..models import PhaseIncident, PhaseTemplate, PhaseTemplateItem, ProjectAssignment, ProjectPhase, RoleDefinition
 from ..schemas import (
     PhaseIncidentCreate,
@@ -90,13 +91,13 @@ def update_phase_status(phase_id: uuid.UUID, body: PhaseStatusUpdate, actor=Depe
     ph.updated_at = utcnow()
     session.add(ph)
 
-    # 验收完成 → 自动启动尾款工序
-    if ph.seq == 4 and body.status == '已验收':
+    # 验收完成（调机阶段）→ 自动启动尾款工序
+    if ph.seq == 3 and body.status == '验收完成':
         from datetime import date as dt_date
         tail = session.exec(
             select(ProjectPhase).where(
                 ProjectPhase.project_id == ph.project_id,
-                ProjectPhase.seq == 5,
+                ProjectPhase.seq == 4,
             )
         ).first()
         if tail and not tail.start_date:
@@ -132,7 +133,7 @@ def add_incident(phase_id: uuid.UUID, body: PhaseIncidentCreate, actor=Depends(g
         ).first()
         if not assignment:
             raise HTTPException(403, "权限不足：销售员仅能更新自己被指派工序的事件")
-    inc = PhaseIncident(phase_id=phase_id, occurred_at=body.occurred_at or date.today(), category=body.category or '现状描述', description=body.description)
+    inc = PhaseIncident(phase_id=phase_id, occurred_at=body.occurred_at or date.today(), category=body.category or '现状描述', description=body.description, image_urls_json=json.dumps(body.image_urls, ensure_ascii=False) if body.image_urls else '[]')
     session.add(inc)
     session.flush()
     return incident_to_out(inc)
@@ -157,6 +158,35 @@ def delete_incident(phase_id: uuid.UUID, incident_id: uuid.UUID, actor=Depends(g
         if not assignment:
             raise HTTPException(403, "权限不足：销售员仅能更新自己被指派工序的事件")
     session.delete(inc)
+
+
+@router.post("/incidents/{incident_id}/images", status_code=201)
+def upload_incident_image(incident_id: uuid.UUID, file: UploadFile = File(...), actor=Depends(get_current_user), session: Session = Depends(get_session)):
+    inc = session.get(PhaseIncident, incident_id)
+    if not inc:
+        raise HTTPException(404, "incident not found")
+    # Save file with unique name
+    ext = file.filename.rsplit(".", 1)[-1] if "." in (file.filename or "") else "png"
+    safe_name = f"{incident_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    file_path = INCIDENT_DIR / safe_name
+    content = file.file.read()
+    file_path.write_bytes(content)
+    url = f"/uploads/incidents/{safe_name}"
+    # Append URL to incident
+    import json
+    urls: list[str] = json.loads(inc.image_urls_json) if inc.image_urls_json else []
+    urls.append(url)
+    inc.image_urls_json = json.dumps(urls, ensure_ascii=False)
+    session.add(inc)
+    return {"url": url, "filename": file.filename, "size": len(content)}
+
+
+@router.get("/uploads/incidents/{filename}")
+def serve_incident_image(filename: str):
+    file_path = INCIDENT_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(404, "image not found")
+    return FileResponse(path=str(file_path))
 
 
 # ─── Assignments (global) ──────────────────────────────────

@@ -7,7 +7,6 @@ export type UrgencyGroup =
   | 'design_warn' | 'design_overdue'
   | 'prod_warn' | 'prod_overdue'
   | 'tune_warn' | 'tune_overdue'
-  | 'accept_warn' | 'accept_overdue'
   | 'tail_warn' | 'tail_overdue'
   | 'rectify'
   | 'completed'
@@ -17,7 +16,6 @@ export const GROUP_LABELS: Record<UrgencyGroup, string> = {
   design_warn: '机械设计预警', design_overdue: '机械设计逾期',
   prod_warn: '生产预警', prod_overdue: '生产逾期',
   tune_warn: '调机预警', tune_overdue: '调机逾期',
-  accept_warn: '验收预警', accept_overdue: '验收逾期',
   tail_warn: '尾款预警', tail_overdue: '尾款逾期',
   rectify: '整改中',
   completed: '已完结',
@@ -28,7 +26,6 @@ export const GROUP_ORDER: UrgencyGroup[] = [
   'design_warn', 'design_overdue',
   'prod_warn', 'prod_overdue',
   'tune_warn', 'tune_overdue',
-  'accept_warn', 'accept_overdue',
   'tail_warn', 'tail_overdue',
   'rectify',
   'completed',
@@ -66,7 +63,6 @@ const ROLE_URGENCY: Record<string, UrgencyGroup[]> = {
   mechanical_designer: ['normal', 'design_warn', 'design_overdue', 'rectify', 'completed'],
   production_executor:   ['normal', 'prod_warn', 'prod_overdue', 'rectify', 'completed'],
   tuning_executor:       ['normal', 'tune_warn', 'tune_overdue', 'rectify', 'completed'],
-  acceptance_executor:   ['normal', 'accept_warn', 'accept_overdue', 'rectify', 'completed'],
 }
 
 export function visibleGroups(roleCodes: string[]): UrgencyGroup[] {

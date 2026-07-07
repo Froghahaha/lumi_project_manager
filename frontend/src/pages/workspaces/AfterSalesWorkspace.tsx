@@ -1,26 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Col, Empty, Row, Space, Tabs } from 'antd'
+import { Col, Empty, Row, Space } from 'antd'
 import { AssignmentPicker } from '../../components/AssignmentPicker'
 import { WorkspaceShell } from '../../components/WorkspaceShell'
-import { useAuth } from '../../contexts/AuthContext'
 import { ProjectCard } from '../../components/ProjectCard'
-import { listAssignments, listProjects } from '../../api'
-import { groupByUrgency, GROUP_LABELS, GROUP_ORDER, type UrgencyGroup } from '../../utils/urgency'
+import { ProjectFilterBar } from '../../components/ProjectFilterBar'
+import { useProjectFilter } from '../../utils/useProjectFilter'
+import { useAuth } from '../../contexts/AuthContext'
+import { listAssignments, listProjects, listCustomers } from '../../api'
 import { phasesOfSeq } from '../../utils/phases'
-import type { Project, ProjectAssignment } from '../../types'
+import type { Customer, Project, ProjectAssignment } from '../../types'
 
 export function AfterSalesWorkspace() {
   const auth = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
   const [assignments, setAssignments] = useState<Record<string, ProjectAssignment[]>>({})
 
   useEffect(() => {
     async function load() {
       setLoading(true)
       try {
-        const all = await listProjects()
+        const [all, c] = await Promise.all([listProjects(), listCustomers()])
         // 只显示已进入生产阶段的项目
         const filtered = all.filter((p) => {
           const prods = phasesOfSeq(p.phases, 2)
@@ -28,6 +30,7 @@ export function AfterSalesWorkspace() {
           return prod && prod.status && prod.status !== '未开始'
         })
         setProjects(filtered)
+        setCustomers(c)
         const amap: Record<string, ProjectAssignment[]> = {}
         for (const p of filtered) {
           amap[p.id] = await listAssignments(p.id)
@@ -39,14 +42,8 @@ export function AfterSalesWorkspace() {
     load()
   }, [])
 
-  async function refreshRow(projectId: string) {
-    setAssignments((prev) => ({ ...prev, [projectId]: prev[projectId] }))
-  }
-
-  const grouped = useMemo(() => groupByUrgency(projects), [projects])
-  const showGroups = GROUP_ORDER.filter((g) => grouped[g].length > 0)
-  const [urgencyTab, setUrgencyTab] = useState<UrgencyGroup>(showGroups[0] || 'normal')
-
+  const customerMap = useMemo(() => Object.fromEntries(customers.map(c => [c.id, c.name])), [customers])
+  const filter = useProjectFilter(projects, customerMap)
   const canManage = auth.hasPermission('manage_tuning_assignment')
 
   return (
@@ -54,39 +51,32 @@ export function AfterSalesWorkspace() {
       {projects.length === 0 ? (
         <Empty description="暂无进入生产阶段的项目" />
       ) : (
-        <Tabs
-          activeKey={urgencyTab}
-          onChange={(k) => setUrgencyTab(k as UrgencyGroup)}
-          size="small"
-          items={showGroups.map((g) => ({
-            key: g,
-            label: `${GROUP_LABELS[g]} (${grouped[g].length})`,
-            children: (
-              <Row gutter={[8, 8]}>
-                {grouped[g].map((p) => {
-                  const tuningPh = phasesOfSeq(p.phases, 3)[0]
-                  const accPh = phasesOfSeq(p.phases, 4)[0]
-                  const as = assignments[p.id] || []
-                  return (
-                    <Col key={p.id} xs={24} sm={24} md={12}>
-                      <ProjectCard
-                        project={p}
-                        extra={
-                          canManage ? (
-                            <Space size={4}>
-                              <AssignmentPicker projectId={p.id} roleCode="tuning_executor" roleName="安调" phaseId={tuningPh?.id ?? null} assignments={as.filter((a) => a.role_code === 'tuning_executor')} onChange={() => refreshRow(p.id)} />
-                              <AssignmentPicker projectId={p.id} roleCode="acceptance_executor" roleName="验收" phaseId={accPh?.id ?? null} assignments={as.filter((a) => a.role_code === 'acceptance_executor')} onChange={() => refreshRow(p.id)} />
-                            </Space>
-                          ) : undefined
-                        }
-                      />
-                    </Col>
-                  )
-                })}
-              </Row>
-            ),
-          }))}
-        />
+        <>
+          <ProjectFilterBar state={filter} actions={filter} />
+          <Row gutter={[8, 8]}>
+            {filter.filteredProjects.map(p => {
+              const tuningPh = phasesOfSeq(p.phases, 3)[0]
+              const as = assignments[p.id] || []
+              return (
+                <Col key={p.id} xs={24} sm={24} md={12}>
+                  <ProjectCard
+                    project={p}
+                    extra={
+                      canManage ? (
+                        <Space size={4}>
+                          <AssignmentPicker projectId={p.id} roleCode="tuning_executor" roleName="安调/验收" phaseId={tuningPh?.id ?? null} assignments={as.filter((a) => a.role_code === 'tuning_executor')} onChange={() => setAssignments(prev => ({ ...prev, [p.id]: prev[p.id] }))} />
+                        </Space>
+                      ) : undefined
+                    }
+                  />
+                </Col>
+              )
+            })}
+          </Row>
+          {filter.filteredProjects.length === 0 && (
+            <Empty description="无匹配项目" style={{ padding: 40 }} />
+          )}
+        </>
       )}
     </WorkspaceShell>
   )
