@@ -26,6 +26,8 @@ function getAuthHeaders(): Record<string, string> {
   return {}
 }
 
+let _redirecting = false  // prevent multiple redirects on concurrent 401s
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -36,6 +38,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
   if (!res.ok) {
+    if (res.status === 401) {
+      try { localStorage.removeItem('lumi_auth') } catch { /* ignore */ }
+      if (!_redirecting) {
+        _redirecting = true
+        window.location.href = '/login'
+      }
+      throw new Error('登录已过期，请重新登录')
+    }
     const text = await res.text()
     throw new Error(text || `HTTP ${res.status}`)
   }

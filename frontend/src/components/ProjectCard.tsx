@@ -1,21 +1,13 @@
 import { Card, Progress, Space, Tag, Typography } from 'antd'
 import { ClockCircleOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
-import { phaseDaysDisplay, phaseStatusTagProps } from '../utils/format'
+import { countdownDisplay, phaseDaysDisplay, phaseStatusTagProps } from '../utils/format'
 import { phaseWarnings } from '../utils/phaseConfig'
 import type { Project, ProjectPhase } from '../types'
 
 /** Format ISO date string as YY-MM-DD (e.g. "2026-01-15" → "26-01-15") */
 function shortYy(d: string): string {
-  return d.slice(2)  // "2026-01-15" → "26-01-15"
-}
-
-/** Days between two ISO date strings (inclusive). Returns null if either is missing. */
-function daysBetween(from: string | null, to: string | null): number | null {
-  if (!from || !to) return null
-  const a = new Date(from); a.setHours(0, 0, 0, 0)
-  const b = new Date(to);   b.setHours(0, 0, 0, 0)
-  return Math.round((b.getTime() - a.getTime()) / 86400000)
+  return d.slice(2)
 }
 
 export function PhaseCardRow({ ph, project }: { ph: ProjectPhase; project: Project }) {
@@ -65,13 +57,14 @@ export function ProjectCard({ project: p, extra, onClick }: {
   const tailDays = tailPhase ? phaseDaysDisplay(tailPhase) : null
   const tailStatusProps = tailPhase ? phaseStatusTagProps(tailPhase) : null
 
-  // Elapsed days: start → today (or last actual_end if all done)
+  // Project elapsed days — same countdown logic as phases
   const allDone = visiblePhases.length > 0 && visiblePhases.every(ph => ph.phase_progress === '已完成')
   const startDate = p.contract_effective_date || p.contract_start_date
-  const endDate = allDone
-    ? visiblePhases.reduce((latest, ph) => (ph.actual_end_date && (!latest || ph.actual_end_date > latest) ? ph.actual_end_date : latest), null as string | null)
-    : new Date().toISOString().slice(0, 10)
-  const elapsed = daysBetween(startDate, endDate)
+  const projectDays = startDate ? countdownDisplay({
+    startDate,
+    plannedEndDate: p.contract_expected_delivery_date,
+    isCompleted: allDone,
+  }) : null
 
   let progressColor = '#1677ff'
   if (payPct >= 100) progressColor = '#52c41a'
@@ -105,11 +98,11 @@ export function ProjectCard({ project: p, extra, onClick }: {
               交期 {shortYy(p.contract_expected_delivery_date)}
             </Typography.Text>
           )}
-          {elapsed != null && (
+          {projectDays && (
             <Typography.Text
-              style={{ fontSize: 11, whiteSpace: 'nowrap', color: allDone ? '#52c41a' : '#1677ff' }}
+              style={{ fontSize: 11, whiteSpace: 'nowrap', color: projectDays.color }}
             >
-              {elapsed}天
+              {projectDays.text}
             </Typography.Text>
           )}
           {warnMsg && <Tag color="red">{warnMsg}</Tag>}

@@ -70,8 +70,52 @@ export function phaseStatusTagProps(ph: { status?: string; terminal_statuses_jso
 }
 
 
+// ─── Shared countdown display ──────────────────────────────
+// Computes { text, color } for any date span — phase or project.
+//   completed: "25天" (gray)
+//   overdue:   "+3天" (red)
+//   warning:   "-2天" (yellow, within 3 days)
+//   normal:    "-10天" (blue)
+//   no end:    "15天" (gray, days since start)
+
+export interface CountdownInput {
+  startDate: string                     // required — no display if missing
+  plannedEndDate?: string | null        // deadline for countdown
+  todayOverride?: string                // for testing
+  isCompleted?: boolean                 // completed spans show gray duration
+}
+
+export function countdownDisplay(opts: CountdownInput): { text: string; color: string } | null {
+  if (!opts.startDate) return null
+
+  const today = new Date(opts.todayOverride ?? new Date().toISOString().slice(0, 10))
+  today.setHours(0, 0, 0, 0)
+
+  const start = new Date(opts.startDate)
+  start.setHours(0, 0, 0, 0)
+
+  if (opts.isCompleted) {
+    const days = Math.round((today.getTime() - start.getTime()) / 86400000)
+    return { text: days > 0 ? `${days}天` : '-', color: 'rgba(0,0,0,0.25)' }
+  }
+
+  if (opts.plannedEndDate) {
+    const end = new Date(opts.plannedEndDate)
+    end.setHours(0, 0, 0, 0)
+    const diff = Math.round((end.getTime() - today.getTime()) / 86400000)
+    if (diff < 0) return { text: `+${Math.abs(diff)}天`, color: 'red' }
+    if (diff <= 3) return { text: `-${diff}天`, color: '#faad14' }
+    return { text: `-${diff}天`, color: '#1677ff' }
+  }
+
+  // No deadline — show elapsed days
+  const elapsed = Math.round((today.getTime() - start.getTime()) / 86400000)
+  return { text: `${elapsed}天`, color: '#666' }
+}
+
+
 // ─── Phase days display ────────────────────────────────────
-// Returns countdown to planned_end_date or days elapsed if overdue.
+// Thin wrapper: delegates to countdownDisplay using phase fields.
 //   -N天 (正常)  -3天 (预警黄色)  +N天 (逾期红色)
 
 export function phaseDaysDisplay(ph: {
@@ -82,30 +126,11 @@ export function phaseDaysDisplay(ph: {
   phase_progress?: string
 }): { text: string; color: string } | null {
   if (!ph.start_date) return null
-  if (ph.phase_progress === '已完成') {
-    const endStr = ph.actual_end_date || ph.planned_end_date || ph.start_date
-    const end = new Date(endStr)
-    end.setHours(0, 0, 0, 0)
-    const start = new Date(ph.start_date!)
-    start.setHours(0, 0, 0, 0)
-    const days = Math.round((end.getTime() - start.getTime()) / 86400000)
-    return { text: days > 0 ? days + '天' : '-', color: 'rgba(0,0,0,0.25)' }
-  }
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  if (ph.planned_end_date) {
-    const end = new Date(ph.planned_end_date)
-    end.setHours(0, 0, 0, 0)
-    const diff = Math.round((end.getTime() - today.getTime()) / 86400000)
-    if (diff < 0) return { text: `+${Math.abs(diff)}天`, color: 'red' }
-    if (diff <= 3) return { text: `-${diff}天`, color: '#faad14' }  // yellow
-    return { text: `-${diff}天`, color: '#1677ff' }  // blue
-  }
-  // No planned_end_date — show days since start
-  const start = new Date(ph.start_date)
-  start.setHours(0, 0, 0, 0)
-  const elapsed = Math.round((today.getTime() - start.getTime()) / 86400000)
-  return { text: `${elapsed}天`, color: '#666' }
+  return countdownDisplay({
+    startDate: ph.start_date,
+    plannedEndDate: ph.planned_end_date,
+    isCompleted: ph.phase_progress === '已完成',
+  })
 }
 
 

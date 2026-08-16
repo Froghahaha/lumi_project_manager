@@ -9,4 +9,3 @@ data.db
 __pycache__/
 frontend/build/*
 *.zip
-dist/*
